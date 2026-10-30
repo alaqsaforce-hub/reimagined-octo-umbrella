@@ -55,6 +55,10 @@ interface DraftDao {
     @Query("SELECT COUNT(*) FROM dictation_drafts")
     suspend fun count(): Int
 
+    /** v0.7.0 backup: every draft, oldest first (a suspend list, unlike [observeRecent]). */
+    @Query("SELECT * FROM dictation_drafts ORDER BY createdAt ASC")
+    suspend fun all(): List<DictationDraft>
+
     @Query("DELETE FROM dictation_drafts WHERE id = :id")
     suspend fun delete(id: String)
 }

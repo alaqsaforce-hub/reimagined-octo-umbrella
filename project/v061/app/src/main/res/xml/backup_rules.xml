@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  API 26-30 equivalent of data_extraction_rules.xml: nothing leaves the phone.
+  Drafts, the knowledge base, settings and encrypted secrets are all excluded from
+  Auto Backup for Apps (the "Back up to Google Drive" toggle) as well as from
+  device-to-device transfer. The user's own explicit export lives in Settings →
+  Backup & restore and writes only where the user points the system file picker.
+-->
+<full-backup-content>
+    <exclude domain="root" />
+    <exclude domain="database" />
+    <exclude domain="sharedpref" />
+    <exclude domain="file" />
+    <exclude domain="external" />
+</full-backup-content>

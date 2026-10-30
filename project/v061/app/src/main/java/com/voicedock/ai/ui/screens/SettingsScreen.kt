@@ -97,6 +97,8 @@ fun SettingsScreen(
         TextButton(onClick = openDrafts) { Text(tr("ড্রাফট ইতিহাস →", "Draft history →")) }
         TextButton(onClick = openPrivacy) { Text(tr("অনুমতি ও প্রাইভেসি", "Permissions & privacy")) }
         HorizontalDivider()
+        BackupSection()
+        HorizontalDivider()
         DiagnosticsSection()
     }
 }

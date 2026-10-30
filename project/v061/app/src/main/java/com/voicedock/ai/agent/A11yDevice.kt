@@ -55,7 +55,7 @@ class A11yDevice(private val svc: InsertAccessibilityService, private val overla
         val kids = ArrayList<RawNode>(n.childCount)
         if (!n.isPassword) for (i in 0 until n.childCount) toRaw(n.getChild(i), depth + 1)?.let { kids += it }
         return RawNode(
-            text = if (n.isPassword) null else if (Build.VERSION.SDK_INT >= 26 && n.isShowingHintText) n.hintText?.toString() ?: n.text?.toString() else n.text?.toString(),
+            text = if (n.isPassword) null else if (n.isShowingHintText) n.hintText?.toString() ?: n.text?.toString() else n.text?.toString(),
             desc = if (n.isPassword) null else n.contentDescription?.toString(),
             cls = n.className?.toString(),
             viewId = n.viewIdResourceName,

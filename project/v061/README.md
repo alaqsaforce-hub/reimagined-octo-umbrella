@@ -3,7 +3,11 @@
 Floating voice assistant for Android — continuous Bangla/English dictation with draft recovery, local punctuation,
 AI tidy-up without invented facts, a personal knowledge base, read-only connectors, its own keyboard and a built-in
 offline Whisper, an on-screen **agent** and AI **accounts** (ChatGPT / OpenRouter sign-in). Native Kotlin + Jetpack Compose
-(+ whisper.cpp via JNI). **Current version: 0.6.4** (debug/test build; real-device verification pending).
+(+ whisper.cpp via JNI). **Current version: 0.6.5** (debug/test build; real-device verification pending).
+
+**v0.6.5:** **backup & restore** — your drafts and knowledge base export to a readable JSON file through the system
+file picker and restore by merging (nothing is ever deleted, and no API key or password can leave the app).
+Plus lint hardening: 0 errors. versionCode 11. See `docs/V0.6.5-CHANGES.md`.
 
 **v0.6.4 (fix pack):** **Android 8.0+ supported again** (`minSdk` back to 26 — v0.6.3 had raised it to 33 with no
 code reason), a **user-maintained screen-probe blocklist** checked before the accessibility tree is walked, a

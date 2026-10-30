@@ -1,5 +1,27 @@
 # Progress
 
+## v0.6.5 — backup & restore + lint hardening (2026-10-30)
+- **Backup & restore** (fills the "no backup/export" gap from the v0.5 audit): readable JSON export of every draft
+  (raw + formatted text, status, language, engine, destination, segments) and every knowledge document (title, source
+  metadata, **indexed chunks verbatim** — they overlap, so they are never re-joined). Import **merges**: a draft is only
+  replaced when the same draft id exists, a document is skipped when its `contentHash` is already stored, duplicates
+  inside one file collapse. Nothing is ever deleted.
+- **No secrets can leave.** `BackupCodec` has no field for API keys, IMAP app passwords, GitHub tokens, OAuth tokens,
+  the ChatGPT/OpenRouter session or the Keystore blob; a unit test asserts the encoded JSON never contains such a key.
+- **Validation, not trust**: wrong app id, non-JSON, `schema` outside 1..1, >5 000 drafts/documents, >24 M characters →
+  refused or trimmed with a human-readable note; unknown keys ignored (forward compatible). Reads are bounded on the
+  UI side too.
+- **UI**: Settings → *Backup & restore* with SAF `CreateDocument`/`OpenDocument`, live counts of local drafts and
+  documents, and an exact added/replaced/skipped report after a restore.
+- Two read-only DAO queries added (`DraftDao.all()`, `KnowledgeDao.allDocuments()`); **Room schema unchanged**, no migration.
+- **Privacy**: new `res/xml/backup_rules.xml` + `android:fullBackupContent` excludes everything from Auto Backup on
+  API 26–30 (matching `data_extraction_rules.xml` for API 31+).
+- **Lint hardening**: 0 errors. Fixed `StaticFieldLeak` in `SettingsStore` (now holds `SharedPreferences`, not a
+  `Context`), documented `@SuppressLint` on the application-scoped `VoiceDock.gemini`, removed two dead `SDK_INT >= 26`
+  checks, added the API 26–30 backup rule, and `@RequiresApi(33)` on `RecognizerCatalog.classify`.
+- Version 0.6.5 (code 11). Tests: **231** (`BackupCodecTest` 22 new). See `V0.6.5-CHANGES.md`,
+  `TEST-RESULTS-v0.6.5.md`.
+
 ## v0.6.4 — fix pack: Android 8.0+, probe blocklist, audit counter, smaller APK (2026-10-30)
 - **Android 8.0+ restored**: `minSdk` 33 → 26 (v0.6.3 had raised the floor with no code reason). Newer-API
   features already guard themselves at runtime (screenshot/Explain screen 34+, on-device recogniser 31+,

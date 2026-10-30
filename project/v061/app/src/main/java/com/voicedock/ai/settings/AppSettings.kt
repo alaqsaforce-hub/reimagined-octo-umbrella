@@ -129,18 +129,20 @@ object SettingsStore {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val _state = MutableStateFlow(AppSettings())
     val state: StateFlow<AppSettings> = _state.asStateFlow()
-    private var ctx: Context? = null
+    // Hold the SharedPreferences instance instead of the Context: same behaviour, and no static
+    // Context reference for lint (StaticFieldLeak) or for a future reader to leak.
+    private var prefs: android.content.SharedPreferences? = null
 
     @Synchronized fun init(context: Context) {
-        ctx = context.applicationContext
-        val raw = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(KEY, null)
+        prefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val raw = prefs?.getString(KEY, null)
         _state.value = raw?.let { runCatching { json.decodeFromString(AppSettings.serializer(), it) }.getOrNull() } ?: AppSettings()
     }
 
     @Synchronized fun update(f: (AppSettings) -> AppSettings) {
         val next = f(_state.value)
         _state.value = next
-        ctx?.getSharedPreferences(FILE, Context.MODE_PRIVATE)?.edit()?.putString(KEY, json.encodeToString(AppSettings.serializer(), next))?.apply()
+        prefs?.edit()?.putString(KEY, json.encodeToString(AppSettings.serializer(), next))?.apply()
     }
 }
 

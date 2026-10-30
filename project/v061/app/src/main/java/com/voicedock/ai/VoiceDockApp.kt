@@ -1,5 +1,6 @@
 package com.voicedock.ai
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
 import com.voicedock.ai.data.database.AppDatabase
@@ -38,6 +39,9 @@ object VoiceDock {
     @Volatile private var controller: DictationController? = null
 
     @Volatile private var router: RoutingSpeechEngine? = null
+    // Application-scoped singleton: the engine is built from the application context and lives as long
+    // as the process, so holding it here is intentional (not an Activity leak).
+    @SuppressLint("StaticFieldLeak")
     @Volatile var gemini: GeminiSpeechEngine? = null; private set
 
     /** Gemini key/model/consent read fresh on every use. */

@@ -89,6 +89,10 @@ interface KnowledgeDao {
 
     @Query("SELECT COUNT(*) FROM kb_documents") suspend fun count(): Int
 
+    /** v0.7.0 backup: every document (a suspend list, unlike [observeDocuments]). */
+    @Query("SELECT * FROM kb_documents ORDER BY createdAt ASC")
+    suspend fun allDocuments(): List<KbDocument>
+
     @Query(
         "SELECT c.id AS id, c.docId AS docId, c.ord AS ord, c.text AS text, d.title AS title " +
             "FROM kb_chunks_fts JOIN kb_chunks c ON c.id = kb_chunks_fts.rowid JOIN kb_documents d ON d.id = c.docId " +

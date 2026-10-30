@@ -1,4 +1,4 @@
-# Privacy and data handling — VoiceDock AI v0.6.4
+# Privacy and data handling — VoiceDock AI v0.6.5
 
 ## Screen context and the assistant bubble
 
@@ -40,6 +40,23 @@
 - Crash logging is enabled by default in debug builds and disabled by default in release builds; the user can change the Diagnostics switch. The newest 10 reports are retained.
 - Before saving, the scrubber attempts to remove e-mail addresses, common API keys, JWTs, credential assignments and long digit runs. Scrubbing is not perfect; inspect a report before sharing it. Sharing happens only when the user taps Share and chooses another app. View and delete/delete-all controls are available in Settings → Diagnostics.
 - The debug-only “Create test crash log” action writes a synthetic sample; it does not terminate the app.
+
+## Backup and restore (new in v0.6.5)
+
+- Backup is **user-initiated only**. Nothing is ever uploaded: the JSON file is written through the
+  system file picker (`CreateDocument`) to a location the user chooses, and restored through
+  `OpenDocument`. There is no cloud account, no sync service and no background copy.
+- The file contains the user's own text: drafts (raw and formatted), their status/language/engine, and
+  knowledge documents with their indexed chunks and source metadata (e.g. a file name or Gmail message
+  id). **It contains no API keys, app passwords, GitHub tokens, OAuth tokens, ChatGPT/OpenRouter
+  session data or Keystore material** — the backup model has no field for them and the secret store is
+  not read.
+- Because the file is readable JSON, the user must choose a safe destination. The UI says so explicitly.
+- Restore merges and never deletes: a draft is replaced only when the same draft id already exists, and
+  a document whose `contentHash` is already stored is skipped. A malformed, foreign or newer-schema file
+  is refused with a message instead of being partly imported.
+- Independently of this feature, `allowBackup="false"` plus `data_extraction_rules.xml` (API 31+) and
+  `backup_rules.xml` (API 26–30) keep the app's data out of Android Auto Backup and device transfer.
 
 ## Storage and deletion
 

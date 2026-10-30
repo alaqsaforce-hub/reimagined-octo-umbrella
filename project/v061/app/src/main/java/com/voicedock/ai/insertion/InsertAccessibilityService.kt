@@ -46,7 +46,7 @@ class InsertAccessibilityService : AccessibilityService() {
         if (node.isPassword) return NodeResult(InsertResult.SECURE_FIELD, pkg)
         if (!node.isEditable) return NodeResult(InsertResult.NO_FIELD, pkg)
         val fieldContext = listOfNotNull(
-            if (Build.VERSION.SDK_INT >= 26) node.hintText?.toString() else null,
+            node.hintText?.toString(),
             node.contentDescription?.toString(), node.viewIdResourceName,
         ).joinToString(" ")
         if (SecretDetector.isSecret(text, fieldContext)) return NodeResult(InsertResult.SECURE_FIELD, pkg)
