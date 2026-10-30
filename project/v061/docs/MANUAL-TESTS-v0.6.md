@@ -71,3 +71,33 @@ Legend: ✅ pass · ❌ fail · ⚠️ restriction to document.
 - Starting a microphone FGS from the background (bubble → 🎤 while another app is in front) may be
   restricted by Android 14+ while-in-use rules; if it fails, open VoiceDock and start dictation there.
 - Canvas/WebView-only screens may look "empty" to the probe; the assistant falls back to chat.
+
+---
+
+## v0.6.6 — the dictation bubble (do these five first)
+
+Setup: Accessibility service on, microphone permission granted, overlay permission granted,
+the floating icon visible, WhatsApp open on a chat with the message box tapped once (cursor visible).
+
+1. **Small on tap.** Tap the floating icon once and do nothing else.
+   *Pass:* a small bubble appears next to the icon with a red dot; **no** panel and **no**
+   full-width sheet appears; the screen is mostly still the chat behind it. The icon stays visible.
+2. **It grows with the text, not with the font.** Say one short word → the bubble stays roughly two
+   lines tall. Say three or four sentences → the bubble gets taller and then scrolls, but never
+   covers more than about a third of the screen. Repeat after setting the system font size to
+   Largest: the bubble must not start bigger than the same text did before.
+3. **Insert really inserts.** Stop speaking, then tap **⏎** in the bubble's bottom-right corner.
+   *Pass:* the text appears at the cursor in the WhatsApp message box, the bubble disappears, the
+   keyboard was never needed, and the text is editable and sendable in WhatsApp itself.
+   *Fail cases to note:* a toast "কপি হয়েছে / Copied" means the field was not reachable
+   (Accessibility off, or no cursor) and the text is on the clipboard instead.
+4. **✨ tidy-up regenerates.** With text in the bubble tap **✨**.
+   *Pass:* the bubble text is replaced by a cleaned-up version within a few seconds and a small
+   "✨ সাজানো হয়েছে" note appears. With no AI key it says a key is needed and the text is unchanged.
+   Wrong network → "AI সংযোগ ব্যর্থ", original text still there.
+5. **💬 asks the agent.** Tap **💬** with a question in the bubble.
+   *Pass:* an answer appears inside the same small bubble (it scrolls if long) and nothing is
+   inserted into WhatsApp. 📋 copies it, ✕ closes everything and stops the microphone.
+
+Also check: tapping the icon a second time closes the bubble and stops listening; **long-pressing**
+the icon still opens the old panel (agent chat / drafts) — that is the intentional fallback path.

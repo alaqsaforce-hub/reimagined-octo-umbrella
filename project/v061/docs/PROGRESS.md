@@ -251,3 +251,28 @@ and redirects; re-check approved insertion targets; gate sensitive agent screens
 start dictation only after its microphone foreground service is active; fix probe cancellation and
 add visible dictation controls. The local probe still cannot reliably detect every FLAG_SECURE window
 or secret: disable screen-context consent in sensitive apps. Explain screen now requires Android 14+.
+
+---
+
+## v0.6.6 — tap opens a small dictation bubble (in progress, built & verified 2026-10-31)
+
+**Why:** the v0.6.5 build was installed on a phone and did not do its job. Tapping the floating
+icon opened a full-width sheet covering about two thirds of the screen and taking the input focus
+away from the message box that was supposed to receive the text.
+
+**What changed:** a short tap now turns the microphone on and shows a small bubble that grows only
+with the amount of recognised text (width ≤ 68 % of the screen, text capped at 20 % of its height,
+`WRAP_CONTENT` window, `FLAG_NOT_FOCUSABLE`). The bottom-right corner holds the three separate
+actions: ⏎ insert into the focused field of the app underneath, ✨ tidy the text up with the AI,
+💬 ask the AI and see the answer in the same bubble — plus 📋 copy and ✕ close. The old panel is
+reachable only by long-pressing the icon.
+
+**Status:** compiles, `:app:lintDebug` 0 errors / 30 warnings, `:app:testDebugUnitTest` 231/0/0 in
+38 suites, debug APK `versionCode 12 / 0.6.6`, minSdk 26, v2-signed, 16 KB-aligned.
+**Not yet tested on a device** — the five checks that matter are in `MANUAL-TESTS-v0.6.md`
+(section "v0.6.6"): bubble stays small, grows with text, insert lands in a real WhatsApp field,
+✨ rewrites the text, 💬 answer appears inside the bubble; plus the clipboard fallback with
+Accessibility off.
+
+**Next:** the screen-reading agent commands (open an app by voice, today's-message summary, reply to
+a chosen sender, music control) are still not implemented; they are the next increment.

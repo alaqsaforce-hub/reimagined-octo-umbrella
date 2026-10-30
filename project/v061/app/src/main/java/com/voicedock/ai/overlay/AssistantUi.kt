@@ -24,6 +24,24 @@ data class AssistantUiState(
     val dictationPhase: DictationPhase? = null,
 )
 
+/**
+ * v0.6.6 — state of the small dictation bubble (the first thing a tap opens).
+ * Deliberately minimal: the bubble is only as tall as [liveText] plus one row of icons.
+ */
+data class DictationBubbleState(
+    val visible: Boolean = false,
+    val phase: DictationPhase? = null,
+    /** Live recognised text, or the tidied version after ✨. */
+    val liveText: String = "",
+    val level: Float = 0f,
+    val busy: Boolean = false,
+    val busyLabel: String = "",
+    /** Answer shown after 💬 (never inserted anywhere). */
+    val answer: String = "",
+    val providerLabel: String = "",
+    val note: String = "",
+)
+
 /** Label for one action chip (bn/en). */
 fun AssistantAction.label(bn: Boolean): String = when (this) {
     AssistantAction.DICTATE -> if (bn) "🎤 ডিক্টেশন" else "🎤 Dictate"

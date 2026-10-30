@@ -49,6 +49,8 @@ import com.voicedock.ai.settings.SettingsStore
 import com.voicedock.ai.settings.UiLanguage
 import com.voicedock.ai.settings.tr
 import com.voicedock.ai.ui.MainActivity
+import com.voicedock.ai.text.AiFormatter
+import com.voicedock.ai.text.FormatStyle
 import com.voicedock.ai.vision.ScreenAssistant
 import com.voicedock.ai.voice.DictationPhase
 import kotlinx.coroutines.Dispatchers
@@ -84,6 +86,13 @@ class AssistantOverlayService : LifecycleService() {
     private var cardOwner: OverlayLifecycleOwner? = null
     private var chatView: ComposeView? = null
     private var chatOwner: OverlayLifecycleOwner? = null
+    private var dictView: ComposeView? = null
+    private var dictOwner: OverlayLifecycleOwner? = null
+
+    /** v0.6.6 — the small dictation bubble (tap = mic on). */
+    private val _dict = MutableStateFlow(DictationBubbleState())
+    /** True once ✨ has replaced the recognised text, so new live text does not overwrite it. */
+    private var dictFormatted = false
 
     private val _ui = MutableStateFlow(AssistantUiState())
     val ui: StateFlow<AssistantUiState> = _ui.asStateFlow()
@@ -157,9 +166,13 @@ class AssistantOverlayService : LifecycleService() {
         ).apply { gravity = Gravity.TOP or Gravity.START; x = s.bubbleX; y = s.bubbleY }
 
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var moved = false
+        var downAt = 0L
         view.setOnTouchListener { v, e ->
             when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { downX = e.rawX; downY = e.rawY; startX = p.x; startY = p.y; moved = false; true }
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.rawX; downY = e.rawY; startX = p.x; startY = p.y; moved = false
+                    downAt = System.currentTimeMillis(); true
+                }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX; val dy = e.rawY - downY
                     if (abs(dx) > 12 || abs(dy) > 12) moved = true
@@ -168,8 +181,10 @@ class AssistantOverlayService : LifecycleService() {
                 }
                 MotionEvent.ACTION_UP -> {
                     if (moved) SettingsStore.update { it.copy(bubbleX = p.x, bubbleY = p.y) }
-                    else if (_ui.value.phase != AssistantPhase.IDLE) closeWindows()
-                    else activate()
+                    else if (System.currentTimeMillis() - downAt >= 450) {
+                        // Long press keeps the old contextual panel reachable (agent, settings, drafts).
+                        if (_ui.value.phase != AssistantPhase.IDLE) closeWindows() else activate()
+                    } else onBubbleTap()
                     true
                 }
                 else -> false
@@ -188,13 +203,222 @@ class AssistantOverlayService : LifecycleService() {
 
     private fun updateBubble() {
         val b = bubble ?: return
-        val color = when (_ui.value.phase) {
-            AssistantPhase.SCANNING -> COLOR_SCANNING
-            AssistantPhase.CONTEXT_CARD -> COLOR_CONTEXT
-            AssistantPhase.CHAT -> COLOR_CHAT
+        val d = _dict.value
+        val color = when {
+            d.visible && d.phase in setOf(DictationPhase.LISTENING, DictationPhase.TEMP_PAUSE, DictationPhase.PROCESSING) -> COLOR_DICT_ON
+            d.visible && d.liveText.isNotBlank() -> COLOR_DICT_READY
+            d.visible -> COLOR_DICT_ON
+            _ui.value.phase == AssistantPhase.SCANNING -> COLOR_SCANNING
+            _ui.value.phase == AssistantPhase.CONTEXT_CARD -> COLOR_CONTEXT
+            _ui.value.phase == AssistantPhase.CHAT -> COLOR_CHAT
             else -> COLOR_IDLE
         }
         (b.background as? GradientDrawable)?.setColor(color)
+    }
+
+    // ------------------------------------------------------------------ dictation bubble (v0.6.6)
+
+    /**
+     * A short tap on the floating icon. It NEVER opens the tall panel: it turns the microphone on
+     * and shows the small bubble that grows with the text. Tapping again closes it.
+     */
+    private fun onBubbleTap() {
+        if (_dict.value.visible) { closeDictBubble(); return }
+        val d = VoiceDock.dictation(this).ui.value
+        val busy = d.phase in setOf(
+            DictationPhase.LISTENING, DictationPhase.TEMP_PAUSE, DictationPhase.PAUSED,
+            DictationPhase.WAITING, DictationPhase.INTERRUPTED, DictationPhase.PROCESSING,
+        )
+        if (busy || d.live.isNotBlank()) {
+            dictFormatted = false
+            _dict.value = DictationBubbleState(
+                visible = true, phase = d.phase,
+                liveText = d.live.ifBlank { d.draft },
+                note = if (d.live.isBlank() && d.draft.isBlank()) tr("শুনছি… বলুন", "Listening — speak") else "",
+            )
+            addDictBubble()
+        } else {
+            startDictationHere()
+        }
+        updateBubble()
+    }
+
+    private fun startDictationHere() {
+        if (!Permissions.mic(this)) {
+            toast(tr("মাইক্রোফোনের অনুমতি দিন", "Grant microphone permission"))
+            openSettings()
+            return
+        }
+        // A stale panel from a previous long-press must not linger behind the bubble.
+        closeWindows()
+        dictFormatted = false
+        assistantDictationStarted = true
+        lastDictationDraft = ""
+        _dict.value = DictationBubbleState(
+            visible = true, phase = DictationPhase.LISTENING,
+            busy = true, busyLabel = tr("মাইক চালু হচ্ছে…", "Starting the microphone…"),
+        )
+        addDictBubble()
+        updateBubble()
+        OverlayService.start(this, OverlayService.ACTION_START_DICTATION)
+        lifecycleScope.launch {
+            delay(1600)
+            if (!OverlayService.foregroundOk) {
+                _dict.value = _dict.value.copy(
+                    busy = false, busyLabel = "", phase = null,
+                    note = tr("মাইক চালু হয়নি — VoiceDock খুলে আবার চেষ্টা করুন", "Microphone did not start — open VoiceDock and try again"),
+                )
+            } else {
+                _dict.value = _dict.value.copy(busy = false, busyLabel = "")
+            }
+        }
+    }
+
+    /** Non-focusable, wrap-content window anchored to the floating icon: the app below keeps the cursor. */
+    private fun addDictBubble() {
+        if (dictView != null) return
+        val owner = OverlayLifecycleOwner()
+        val view = ComposeView(this)
+        owner.attach(view); owner.create()
+        view.setContent {
+            val state by _dict.collectAsState()
+            DictationBubble(
+                state = state,
+                onInsert = { insertDictated() },
+                onRephrase = { rephraseDictated() },
+                onAsk = { askDictated() },
+                onCopy = {
+                    val t = state.answer.ifBlank { state.liveText }
+                    if (t.isNotBlank()) { ClipboardInsertion.insert(this, t); toast(tr("কপি হয়েছে", "Copied")) }
+                },
+                onClose = { closeDictBubble() },
+            )
+        }
+        val dm = resources.displayMetrics
+        val iconSize = (54 * dm.density).toInt()
+        val maxWidth = (dm.widthPixels * 0.68f).toInt()
+        val bp = bubbleParams
+        var x = (bp?.x ?: 0) + iconSize / 2
+        var y = (bp?.y ?: 200) + iconSize + (8 * dm.density).toInt()
+        x = x.coerceIn(0, (dm.widthPixels - maxWidth).coerceAtLeast(0))
+        // Keep it on screen: if there is no room below the icon, put the bubble above it.
+        val estimatedHeight = (dm.heightPixels * 0.34f).toInt()
+        if (y + estimatedHeight > dm.heightPixels) y = ((bp?.y ?: 400) - estimatedHeight).coerceAtLeast(0)
+
+        val p = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, overlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT,
+        ).apply { gravity = Gravity.TOP or Gravity.START; this.x = x; this.y = y }
+        runCatching { wm.addView(view, p) }.onSuccess { dictView = view; dictOwner = owner }
+            .onFailure { owner.destroy(); Log.w("VoiceDock", "dict bubble add failed: ${it.javaClass.simpleName}") }
+    }
+
+    private fun removeDictBubble() {
+        dictView?.let { runCatching { wm.removeView(it) } }
+        dictOwner?.destroy(); dictView = null; dictOwner = null
+    }
+
+    /** Close the bubble. The text is never lost: the controller has already saved every sentence. */
+    private fun closeDictBubble(stopDictation: Boolean = true) {
+        removeDictBubble()
+        _dict.value = DictationBubbleState()
+        if (stopDictation) {
+            val d = VoiceDock.dictation(this).ui.value
+            if (d.micOn) runCatching { VoiceDock.dictation(this).finish() }
+        }
+        updateBubble()
+    }
+
+    /** ⏎ — put the text into the focused field of the app underneath (never into a password field). */
+    private fun insertDictated() {
+        val text = _dict.value.liveText.trim()
+        if (text.isBlank()) { toast(tr("কোনো লেখা নেই", "There is no text yet")); return }
+        val micOn = VoiceDock.dictation(this).ui.value.micOn
+        removeDictBubble()
+        lifecycleScope.launch {
+            if (micOn) runCatching { VoiceDock.dictation(this@AssistantOverlayService).finish() }
+            // Let our window disappear so the app underneath gets the input focus back.
+            delay(280)
+            val out = TextInserter.insert(this@AssistantOverlayService, text)
+            toast(tr(out.result.bn, out.result.en))
+            VoiceDock.dictation(this@AssistantOverlayService).markInserted(out.destination)
+            _dict.value = DictationBubbleState()
+            updateBubble()
+        }
+    }
+
+    /** ✨ — tidy the recognised text (Mode B). The original is kept on device as the draft. */
+    private fun rephraseDictated() {
+        val text = _dict.value.liveText.trim()
+        if (text.isBlank()) return
+        if (!AiSetup.ready(this)) {
+            _dict.value = _dict.value.copy(note = tr("সাজানোর জন্য একটি AI key দরকার (সেটিংস → AI)", "Tidying needs an AI key (Settings → AI)"))
+            return
+        }
+        val style = runCatching { FormatStyle.valueOf(SettingsStore.state.value.formatStyle) }.getOrDefault(FormatStyle.CLEAN)
+        _dict.value = _dict.value.copy(
+            busy = true, busyLabel = tr("সাজানো হচ্ছে…", "Tidying up…"), note = "", answer = "",
+        )
+        lifecycleScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { AiFormatter.format(AiSetup.router(this@AssistantOverlayService), text, style) }
+            }.onSuccess { r ->
+                if (r.text.isBlank()) {
+                    _dict.value = _dict.value.copy(busy = false, busyLabel = "", note = tr("সাজানো যায়নি", "Could not tidy the text"))
+                } else {
+                    dictFormatted = true
+                    _dict.value = _dict.value.copy(
+                        liveText = r.text, busy = false, busyLabel = "",
+                        providerLabel = BubbleAi.providerLabel(r.answer),
+                        note = if (r.warnings.isEmpty()) tr("✨ সাজানো হয়েছে", "✨ Tidied up") else r.warnings.joinToString(" · "),
+                    )
+                }
+            }.onFailure {
+                _dict.value = _dict.value.copy(
+                    busy = false, busyLabel = "",
+                    note = tr("AI সংযোগ ব্যর্থ — লেখা অপরিবর্তিত", "AI request failed — text unchanged"),
+                )
+            }
+        }
+    }
+
+    /** 💬 — ask the AI about what you just said. The answer is shown here, never inserted. */
+    private fun askDictated() {
+        val text = _dict.value.liveText.trim()
+        if (text.isBlank()) return
+        if (SecretDetector.isSecret(text)) {
+            _dict.value = _dict.value.copy(note = tr("কোড/পিন-সদৃশ লেখা AI-তে পাঠানো হয়নি", "Code/PIN-like text was not sent to the AI"))
+            return
+        }
+        if (!AiSetup.ready(this)) {
+            _dict.value = _dict.value.copy(note = tr("উত্তরের জন্য একটি AI key দরকার (সেটিংস → AI)", "An AI key is needed for answers (Settings → AI)"))
+            return
+        }
+        val bn = SettingsStore.state.value.uiLanguage == UiLanguage.BN
+        _dict.value = _dict.value.copy(
+            busy = true, busyLabel = tr("উত্তর তৈরি হচ্ছে…", "Asking your AI…"), answer = "", note = "",
+        )
+        lifecycleScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    AiSetup.router(this@AssistantOverlayService)
+                        .complete(BubbleAi.generalSystemPrompt(bn), BubbleAi.generalMessages(text))
+                }
+            }.onSuccess { a ->
+                _dict.value = _dict.value.copy(
+                    answer = a.text.trim(), providerLabel = BubbleAi.providerLabel(a),
+                    busy = false, busyLabel = "",
+                )
+            }.onFailure {
+                _dict.value = _dict.value.copy(
+                    busy = false, busyLabel = "",
+                    note = tr("AI উত্তর দিতে পারেনি", "The AI could not answer"),
+                )
+            }
+        }
     }
 
     // ------------------------------------------------------------------ activation
@@ -304,6 +528,8 @@ class AssistantOverlayService : LifecycleService() {
 
     private fun closeEverything() {
         probeJob?.cancel()
+        removeDictBubble()
+        _dict.value = DictationBubbleState()
         closeWindows()
         removeBubble()
         scrim?.detach()
@@ -561,17 +787,30 @@ class AssistantOverlayService : LifecycleService() {
     private fun observeDictation() {
         lifecycleScope.launch {
             VoiceDock.dictation(this@AssistantOverlayService).ui.collect { d ->
+                val bubbleOn = _dict.value.visible
+                if (bubbleOn) {
+                    // The bubble grows with the text: recognised words first, the cleaned draft at REVIEW.
+                    val live = when {
+                        dictFormatted -> _dict.value.liveText
+                        d.phase == DictationPhase.REVIEW && d.draft.isNotBlank() -> d.draft
+                        else -> d.live
+                    }
+                    _dict.value = _dict.value.copy(phase = d.phase, liveText = live, level = d.level)
+                    updateBubble()
+                }
                 if (assistantDictationStarted) {
                     _ui.value = _ui.value.copy(dictationPhase = d.phase)
                     if (d.phase == DictationPhase.REVIEW) {
                         assistantDictationStarted = false
                         if (d.draft.isNotBlank() && d.draft != lastDictationDraft) {
                             lastDictationDraft = d.draft
-                            _ui.value = _ui.value.copy(
-                                draft = d.draft,
-                                note = tr("রিভিউ করুন, তারপর ‘বসাও’ চাপুন।", "Review, then tap ‘Insert’."),
-                            )
-                            switchToChat()
+                            if (!bubbleOn) {
+                                _ui.value = _ui.value.copy(
+                                    draft = d.draft,
+                                    note = tr("রিভিউ করুন, তারপর ‘বসাও’ চাপুন।", "Review, then tap ‘Insert’."),
+                                )
+                                switchToChat()
+                            }
                         }
                     }
                 }
@@ -637,7 +876,7 @@ class AssistantOverlayService : LifecycleService() {
 
     override fun onDestroy() {
         probeJob?.cancel()
-        removeCard(); removeChat(); removeBubble(); scrim?.detach()
+        removeCard(); removeChat(); removeDictBubble(); removeBubble(); scrim?.detach()
         running = false
         super.onDestroy()
     }
@@ -654,6 +893,8 @@ class AssistantOverlayService : LifecycleService() {
         private const val COLOR_SCANNING = 0xFF3DDCBF.toInt()
         private const val COLOR_CONTEXT = 0xFF2E7D32.toInt()
         private const val COLOR_CHAT = 0xFF6A1B9A.toInt()
+        private const val COLOR_DICT_ON = 0xFFE53935.toInt()
+        private const val COLOR_DICT_READY = 0xFF2E7D32.toInt()
 
         @Volatile var running = false; private set
 
