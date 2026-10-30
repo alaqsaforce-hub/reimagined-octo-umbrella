@@ -1,15 +1,28 @@
-# Privacy and data handling — VoiceDock AI v0.6.1
+# Privacy and data handling — VoiceDock AI v0.6.4
 
 ## Screen context and the assistant bubble
 
 - The floating assistant does not require microphone access. It runs with a persistent foreground-service notification.
 - Screen context is read only after the user has enabled the separate screen-context consent and taps the bubble/action. The first probe holds only counts, field flags, package/app metadata and a secret-hit count in memory; it does not persist screen text.
-- Known finance/blocked packages and VoiceDock's own window are rejected before traversing child nodes. Password text and password-field children are not read. Incomplete scans fail closed. Android does not expose every other app's `FLAG_SECURE` state to this probe, so this is a heuristic—not a security boundary. Turn screen-context consent off before sensitive apps.
+- Known finance/blocked packages, **the user's own probe blocklist (v0.6.4)** and VoiceDock's own window are rejected before traversing child nodes. Password text and password-field children are not read. Incomplete scans fail closed. Android does not expose every other app's `FLAG_SECURE` state to this probe, so this is a heuristic—not a security boundary. Either turn screen-context consent off before sensitive apps, or put them on the probe blocklist (the reliable control).
 - The same platform-free `SecretDetector` is used by screen probing, agent pre-flight/type checks, safety-oracle checks and accessibility insertion. It normalizes Unicode decimal digits (including Bengali), detects OTP/PIN wording with nearby 4–8 digit runs, treats unexplained 6–8 digit runs conservatively, and only treats card-like text as a card when it passes Luhn. Years, prices, order references and postcodes are contextual exceptions. False negatives and false positives remain possible.
 - Free-form bubble questions may be sent to the configured AI provider. The provider/model is shown with the answer. Existing consent, local-only, paid-provider and free-first policies are applied by the same provider router used elsewhere in the app. The user should not type confidential material into the bubble unless they intend to send it to that provider.
 - Draft reply is offered only from a detected editable app screen. VoiceDock hides its windows, waits briefly, verifies that the same package is still active, then reads visible text once (up to 4,000 characters). It scans the captured text before making a provider call; if a likely code is found, no conversation text is sent. Otherwise the conversation is supplied as untrusted text, and the AI is instructed not to follow instructions contained in messages. Screen text is transient and is not saved by the app. Detection and prompt-injection defenses are heuristic and cannot guarantee a secret will never be missed.
 - A draft is only a suggestion. VoiceDock never sends a message. Insertion still needs the user's explicit tap and re-checks the target package and focused field; if verification fails, the text is copied instead.
 - The bubble's empty event-memory placeholder was removed. v0.6.1 does not collect background notifications or have persistent event memory.
+
+## Probe blocklist and audit counter (new in v0.6.4)
+
+- **Blocklist.** The user can list package names (typed, or picked from launcher-visible apps) in
+  Settings → ভাসমান সহকারী. `ScreenProbe` checks the list **before** it walks the accessibility tree, so a
+  blocked app's window is never traversed, counted, buffered or handed to any model. Matching is
+  case-insensitive and hierarchical: `com.example.bank` also covers `com.example.bank.wallet`, but not
+  `com.example.bankrupt`. Built-in finance rules stay active independently and can only be made stricter,
+  never weaker.
+- **Audit counter.** Every probe attempt is counted locally as *attempts*, *refused* and *used*, plus the
+  timestamp of the last attempt. Only counters are stored — never a package name, app label, window title or
+  any screen text — in app-private SharedPreferences. Nothing is uploaded, and the user can reset the
+  counters at any time from the same screen.
 
 ## Other data handling
 

@@ -96,6 +96,8 @@ data class AppSettings(
     val assistantSelfTyping: Boolean = true,
     val assistantCatchUp: Boolean = true,
     val assistantDimBlur: Boolean = true,
+    /** User-maintained probe blocklist (package names). Checked BEFORE the window is traversed. */
+    val probeBlockedPackages: List<String> = emptyList(),
     /** Opt-in local crash reports: enabled by default only in debug builds. */
     val crashLoggingEnabled: Boolean = com.voicedock.ai.BuildConfig.DEBUG,
 ) {
@@ -111,6 +113,9 @@ data class AppSettings(
         dimBlur = assistantDimBlur,
         localOnly = localOnly,
     )
+
+    /** Probe blocklist, sanitised so a hand-edited prefs blob cannot inject junk. */
+    fun blockedPackages(): List<String> = com.voicedock.ai.context.ProbePolicy.sanitize(probeBlockedPackages)
     fun sessionConfig() = SessionConfig(
         shortPauseMs = shortPauseSec.coerceIn(1, 30) * 1000L,
         longInactivityMs = if (keepListeningOnLongSilence) null else longInactivityMin.coerceIn(1, 120) * 60_000L,

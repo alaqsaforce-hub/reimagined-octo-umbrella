@@ -27,7 +27,11 @@ object ContextPolicy {
     ): Pair<ContextKind, BlockReason> {
         if (!cfg.screenContextConsent) return ContextKind.SECURE to BlockReason.CONSENT_OFF
         if (s.isSelf) return ContextKind.SECURE to BlockReason.SELF_PACKAGE
-        if (oracle.blockedPackage(s.pkg) || s.pkg in cfg.extraBlockedPackages)
+        // The user's own blocklist wins over everything else and gets its own explanation, so the
+        // bubble can say "you blocked this app" instead of blaming the built-in finance rules.
+        if (s.userBlocked || ProbePolicy.matches(s.pkg, cfg.extraBlockedPackages))
+            return ContextKind.SECURE to BlockReason.USER_BLOCKED
+        if (oracle.blockedPackage(s.pkg))
             return ContextKind.SECURE to BlockReason.FINANCE_PACKAGE
         if (oracle.financeLabel(s.appLabel)) return ContextKind.SECURE to BlockReason.FINANCE_LABEL
         if (s.hasPasswordField) return ContextKind.SECURE to BlockReason.PASSWORD_FIELD
@@ -65,6 +69,9 @@ object ContextPolicy {
         BlockReason.OTP_LIKE_TEXT, BlockReason.CARD_LIKE_TEXT -> if (bn)
             "OTP/পিন/কার্ড-সদৃশ তথ্য — স্ক্রিন পড়া বাদ দেওয়া হয়েছে।"
         else "OTP/PIN/card-like content — screen reading skipped."
+        BlockReason.USER_BLOCKED -> if (bn)
+            "এই অ্যাপটি আপনি নিজেই স্ক্রিন পড়া থেকে বন্ধ রেখেছেন। সেটিংস → ভাসমান সহকারী থেকে তালিকা বদলাতে পারেন।"
+        else "You blocked this app from screen reading. Change the list in Settings → Floating assistant."
         BlockReason.FLAG_SECURE -> if (bn)
             "এই অ্যাপ স্ক্রিনশট/কনটেন্ট আটকায় — কিছু নেওয়া হয়নি।"
         else "This app blocks screen content — nothing was taken."

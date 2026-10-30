@@ -29,11 +29,13 @@ android {
 
     defaultConfig {
         applicationId = "com.voicedock.ai"
-        // 33 = Android 13 (minimum supported). Devices below Android 13 cannot install.
-        minSdk = 33
+        // 26 = Android 8.0 (minimum supported). v0.6.3 had raised this to 33 by mistake: nothing in
+        // the code needs API 33 as a floor. Features that DO need newer APIs guard themselves at
+        // runtime (screen capture needs 34+, on-device recognisers 31+, FGS types 34+).
+        minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.6.3"
+        versionCode = 10
+        versionName = "0.6.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Offline Whisper (whisper.cpp) is built for 64-bit ARM only — practically every phone from the last years.
         ndk { abiFilters += listOf("arm64-v8a") }
@@ -100,6 +102,9 @@ android {
     }
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/LICENSE.md", "META-INF/NOTICE.md", "META-INF/LICENSE", "META-INF/NOTICE", "META-INF/DEPENDENCIES")
+        // Post-quantum tables shipped inside bcprov are never used by PDF text extraction but
+        // cost 4.1 MB compressed. Dropping them keeps the APK lean; classic crypto is untouched.
+        resources.excludes += setOf("org/bouncycastle/pqc/**")
         resources.pickFirsts += setOf("META-INF/mailcap", "META-INF/mailcap.default", "META-INF/mimetypes.default", "META-INF/javamail.default.providers", "META-INF/javamail.default.address.map", "META-INF/javamail.charset.map")
     }
 }

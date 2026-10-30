@@ -3,16 +3,20 @@
 Floating voice assistant for Android — continuous Bangla/English dictation with draft recovery, local punctuation,
 AI tidy-up without invented facts, a personal knowledge base, read-only connectors, its own keyboard and a built-in
 offline Whisper, an on-screen **agent** and AI **accounts** (ChatGPT / OpenRouter sign-in). Native Kotlin + Jetpack Compose
-(+ whisper.cpp via JNI). **Current version: 0.6.3** (debug/test build; real-device verification pending).
+(+ whisper.cpp via JNI). **Current version: 0.6.4** (debug/test build; real-device verification pending).
 
-**v0.6.3 upgrade:** Minimum SDK raised to **Android 13 (API 33)** — the app now installs only on Android 13 and higher devices. Android Gradle Plugin 8.9.0, versionCode 9, plus MIT LICENSE, CONTRIBUTING.md and GitHub Actions CI.
+**v0.6.4 (fix pack):** **Android 8.0+ supported again** (`minSdk` back to 26 — v0.6.3 had raised it to 33 with no
+code reason), a **user-maintained screen-probe blocklist** checked before the accessibility tree is walked, a
+**local audit counter** of screen reads (counts only), and a smaller APK (42.4 → 17.7 MiB) after dropping unused
+post-quantum tables. versionCode 10. See `docs/V0.6.4-CHANGES.md` and `docs/TEST-RESULTS-v0.6.4.md` (209 tests).
 
 ## v0.6 contextual assistant
 - A mic-free floating bubble can perform an on-tap accessibility probe with separate consent, and offers
   a context card or a focusable assistant chat. Its intent router and catch-up placeholder run locally.
 - Insert requires an explicit tap and rechecks the original app and focused field; otherwise it copies the draft.
 - Sensitive-screen detection is heuristic: the local probe cannot reliably detect every `FLAG_SECURE` screen or
-  secret. Disable screen-context consent before sensitive apps. Explain screen needs Android 14+, screenshot and
+  secret. Put sensitive apps on the **probe blocklist** (v0.6.4, checked before anything is read) or disable
+  screen-context consent. Explain screen needs Android 14+, screenshot and
   cloud consent, and refuses to send text if per-window capture fails.
 - Background event collection, permanent personal memory, biometric protection and local text generation are not
   implemented in v0.6. See `docs/LIMITATIONS.md` and `docs/MANUAL-TESTS-v0.6.md`.

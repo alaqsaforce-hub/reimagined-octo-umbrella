@@ -31,6 +31,8 @@ enum class BlockReason {
     OTP_LIKE_TEXT,
     CARD_LIKE_TEXT,
     FLAG_SECURE,
+    /** The user put this package on their own probe blocklist (Settings → Floating assistant). */
+    USER_BLOCKED,
 }
 
 /** One editable (or password) field seen on the screen. Labels are untrusted screen content. */
@@ -58,6 +60,8 @@ data class ContextSnapshot(
     val isSelf: Boolean = false,
     /** False when rootInActiveWindow was null or the probe threw. */
     val probeOk: Boolean = true,
+    /** This package was refused by the user's own blocklist (not by the built-in finance rules). */
+    val userBlocked: Boolean = false,
 ) {
     val focusedField: FieldInfo? get() = fields.firstOrNull { it.focused && it.editable && !it.password }
     val editableField: FieldInfo? get() = fields.firstOrNull { it.editable && !it.password } ?: focusedField

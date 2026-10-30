@@ -39,6 +39,7 @@ import com.voicedock.ai.context.ContextKind
 import com.voicedock.ai.context.ContextPolicy
 import com.voicedock.ai.context.ContextSnapshot
 import com.voicedock.ai.context.LocalIntentRouter
+import com.voicedock.ai.device.ProbeRunner
 import com.voicedock.ai.device.ScreenProbe
 import com.voicedock.ai.insertion.ClipboardInsertion
 import com.voicedock.ai.insertion.InsertAccessibilityService
@@ -209,7 +210,7 @@ class AssistantOverlayService : LifecycleService() {
             if (s.assistantAutoScan) delay(240)
             val snapshot = withContext(Dispatchers.IO) {
                 if (s.assistantAutoScan && s.assistantScreenContext)
-                    ScreenProbe.probe(InsertAccessibilityService.instance, oracle = AgentSafetyOracle)
+                    ProbeRunner.probe(InsertAccessibilityService.instance, this@AssistantOverlayService)
                 else ContextSnapshot(probeOk = true) // no consent / auto-scan off -> generic assistant
             }
             val current = SettingsStore.state.value
@@ -355,7 +356,7 @@ class AssistantOverlayService : LifecycleService() {
             delay(250)
             val settings = SettingsStore.state.value
             val snapshot = if (target.isNotBlank() && settings.assistantScreenContext)
-                withContext(Dispatchers.IO) { ScreenProbe.probe(InsertAccessibilityService.instance, oracle = AgentSafetyOracle) }
+                withContext(Dispatchers.IO) { ProbeRunner.probe(InsertAccessibilityService.instance, this@AssistantOverlayService) }
             else ContextSnapshot(probeOk = false)
             val assessment = ContextClassifier.assess(snapshot, settings.assistantPrefs().policy(), AgentSafetyOracle)
             if (assessment.kind != ContextKind.FIELD_FOUND || snapshot.pkg != target || snapshot.focusedField == null) {

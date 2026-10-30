@@ -5,6 +5,7 @@ import com.voicedock.ai.context.DefaultSafetyOracle
 import com.voicedock.ai.context.SafetyOracle
 import com.voicedock.ai.context.ContextSnapshot
 import com.voicedock.ai.context.FieldInfo
+import com.voicedock.ai.context.ProbePolicy
 import com.voicedock.ai.insertion.InsertAccessibilityService
 
 /**
@@ -23,6 +24,8 @@ object ScreenProbe {
         maxChars: Int = 4000,
         screenshotBlocked: Boolean = false,
         oracle: SafetyOracle = DefaultSafetyOracle,
+        /** The user's own blocklist (ProbePolicy entries). Checked BEFORE any child is visited. */
+        extraBlocked: Collection<String> = emptyList(),
     ): ContextSnapshot {
         if (svc == null) return ContextSnapshot(capturedAt = now, probeOk = false)
         val root = try { svc.rootInActiveWindow } catch (_: Exception) { null }
@@ -34,10 +37,13 @@ object ScreenProbe {
             pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
         } catch (_: Exception) { "" }
         val isSelf = pkg == svc.packageName
-        // Do not inspect even a single child of a known financial, blocked, or self window.
-        if (isSelf || screenshotBlocked || oracle.blockedPackage(pkg) || oracle.financeLabel(appLabel)) {
+        val userBlocked = ProbePolicy.userBlockedOnly(pkg, appLabel, extraBlocked, oracle)
+        // Do not inspect even a single child of a self, user-blocked, financial or secured window.
+        if (isSelf || screenshotBlocked ||
+            ProbePolicy.isBlocked(pkg, appLabel, extraBlocked, oracle)
+        ) {
             return ContextSnapshot(pkg = pkg, appLabel = appLabel, capturedAt = now,
-                flagSecure = screenshotBlocked, isSelf = isSelf)
+                flagSecure = screenshotBlocked, isSelf = isSelf, userBlocked = userBlocked)
         }
 
         val fields = ArrayList<FieldInfo>(8)

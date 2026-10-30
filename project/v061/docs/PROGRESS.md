@@ -1,5 +1,50 @@
 # Progress
 
+## v0.6.4 — fix pack: Android 8.0+, probe blocklist, audit counter, smaller APK (2026-10-30)
+- **Android 8.0+ restored**: `minSdk` 33 → 26 (v0.6.3 had raised the floor with no code reason). Newer-API
+  features already guard themselves at runtime (screenshot/Explain screen 34+, on-device recogniser 31+,
+  FGS types 34+).
+- **User blocklist** (`context/ProbePolicy.kt`, pure/JVM-tested): normalise/cap(100)/dedupe/hierarchical match
+  (`com.example.bank` covers `com.example.bank.wallet`, not `com.example.bankrupt`). `ScreenProbe` takes
+  `extraBlocked` and refuses **before** the accessibility tree is walked. New `BlockReason.USER_BLOCKED` so the
+  bubble says "you blocked this app". Editor in Settings → ভাসমান সহকারী (type a package or pick a launcher app).
+- **Local audit counter** (`security/ProbeAudit.kt`): attempts / refused / used + last timestamp, counts only —
+  no package, label or text; app-private prefs, resettable. All four probe call sites now use
+  `device/ProbeRunner.kt`, which reads the blocklist and records the audit row.
+- **Smaller APK**: `resources.excludes += "org/bouncycastle/pqc/**"` drops 4.1 MB of unused post-quantum tables
+  pulled in by PDFBox.
+- Version 0.6.4 (code 10). Tests: **209** (`ProbePolicyTest` 18 new). See `V0.6.4-CHANGES.md`,
+  `TEST-RESULTS-v0.6.4.md`.
+
+## v0.6.3 — version bump + minSdk raised to 33 (2026-10-29)
+- `versionCode 9`, `versionName 0.6.3`, `minSdk 26 → 33` (reverted in v0.6.4), `targetSdk` stayed 35.
+- Preserved as-is in `project/v060/`'s sibling `v061` tree; the Gradle wrapper (9.7.1) was applied to both
+  `v060` and `v061` at merge time. **No APK was ever produced for this version**, so v0.6.3 shipped as source
+  that had never compiled in CI.
+
+## v0.6.2 — build toolchain + project hygiene (2026-10-29)
+- Android Gradle Plugin 8.7.3 → **8.9.0** (Gradle wrapper 9.7.1), `versionCode 7 → 8`, `versionName 0.6.1 → 0.6.2`.
+- Added repository `README.md`, MIT `LICENSE`, `CONTRIBUTING.md`, and GitHub Actions CI
+  (`project/v061/.github/workflows/android.yml`): JVM/Robolectric tests + debug/release APK builds on every push,
+  with optional private release signing from secrets and R8 mapping upload.
+- Release build type made honest: `isMinifyEnabled`/`isShrinkResources` on, and `signingConfig` is **null**
+  (unsigned) unless `VOICEDOCK_KEYSTORE*` secrets or `keystore.properties` are supplied — never silently
+  signed with the public debug key. Added `scripts/rotate-signing-key.sh`.
+
+## v0.6.1 — hardening: crash diagnostics, secret detection, bubble helpers (2026-10-30 00:41 +06)
+- **Local crash diagnostics** (`security/`): `CrashLogStore` (newest 10, app-private `files/crash-reports`),
+  `CrashReport`/`CrashReportScrubber` (linear-time scrub of e-mails, JWTs, provider keys, credential
+  assignments, long digit runs), `CrashLogUncaughtExceptionHandler`, and a Diagnostics UI section with
+  view/share/delete. Opt-in switch, on by default only in debug builds.
+- **`SecretDetector`** extracted as the shared, platform-free PIN/OTP/card detector (Unicode digits incl.
+  Bengali, Luhn for cards, year/price/order-ref exceptions) used by probe, agent and insertion gates.
+- **`overlay/BubbleAi.kt`** helper for the bubble's provider calls; `AssistantOverlayService` reworked
+  (+128/−18) around the probe → classify → window flow; `AgentSafety` and `ChatGptAuth` tightened
+  (session cache + rotating-refresh race handling); `ScreenProbe` buffers visible strings transiently so a
+  code and its adjacent "verification code" label are judged together.
+- New test classes: `BubbleAiTest`, `SecretDetectorTest`, `CrashReportTest`, `CrashLogTest`,
+  `ChatGptSessionCacheTest`, `ChatGptSessionRaceTest`, `Phase1HardeningTest`. Version 0.6.1 (code 7).
+
 ## v0.5.0 — agent core + AI accounts (2026-10-24)
 - **Agent** (`agent/`): `ScreenModel` turns the Accessibility tree into ≤160 numbered elements (buttons, fields, lists,
   toggles, text; rows keep their inner text; password fields flagged) with a stable screen signature. `AgentProtocol` parses one

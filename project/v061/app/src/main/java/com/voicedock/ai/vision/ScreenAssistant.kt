@@ -11,7 +11,7 @@ import com.voicedock.ai.ai.GeminiException
 import com.voicedock.ai.context.ContextClassifier
 import com.voicedock.ai.context.ContextKind
 import com.voicedock.ai.device.AgentSafetyOracle
-import com.voicedock.ai.device.ScreenProbe
+import com.voicedock.ai.device.ProbeRunner
 import com.voicedock.ai.insertion.InsertAccessibilityService
 import com.voicedock.ai.settings.SettingsStore
 import com.voicedock.ai.settings.UiLanguage
@@ -87,7 +87,7 @@ object ScreenAssistant {
         hideOverlay()
         try {
             delay(350)
-            val snapshot = withContext(Dispatchers.IO) { ScreenProbe.probe(svc, oracle = AgentSafetyOracle) }
+            val snapshot = withContext(Dispatchers.IO) { ProbeRunner.probe(svc, ctx) }
             val current = SettingsStore.state.value
             val assessment = ContextClassifier.assess(snapshot, current.assistantPrefs().policy(), AgentSafetyOracle)
             if (assessment.kind == ContextKind.SECURE || assessment.kind == ContextKind.NO_ACCESS) {
@@ -105,7 +105,7 @@ object ScreenAssistant {
                 _ui.value = _ui.value.copy(busy = false, error = tr("স্ক্রিনশট পাওয়া যায়নি বা সুরক্ষিত — কোনো লেখা পাঠানো হয়নি", "Window capture failed or was protected — no screen text was sent"))
                 return
             }
-            val after = withContext(Dispatchers.IO) { ScreenProbe.probe(svc, oracle = AgentSafetyOracle) }
+            val after = withContext(Dispatchers.IO) { ProbeRunner.probe(svc, ctx) }
             val latest = SettingsStore.state.value
             val afterAssessment = ContextClassifier.assess(after, latest.assistantPrefs().policy(), AgentSafetyOracle)
             val afterRoot = svc.rootInActiveWindow

@@ -11,6 +11,7 @@ import android.speech.RecognitionSupport
 import android.speech.RecognitionSupportCallback
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import androidx.annotation.RequiresApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -124,6 +125,12 @@ object RecognizerCatalog {
         }
     }
 
+    /**
+     * Android 13+ only: [RecognitionSupport] itself does not exist below API 33. The only caller,
+     * [checkSupport], returns before this point on older versions — the annotation makes that
+     * contract explicit for lint and for future callers.
+     */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun classify(s: RecognitionSupport, tag: String): LangSupport {
         val lang = tag.substringBefore('-').lowercase()
         fun has(list: List<String>) = list.any { it.equals(tag, true) || it.substringBefore('-').equals(lang, true) }
