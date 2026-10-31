@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.voicedock.ai.VoiceDock
 import com.voicedock.ai.command.CommandLog
 import com.voicedock.ai.memory.MemoryStore
 import android.Manifest
@@ -52,9 +53,9 @@ fun CommandsSection() {
     var tick by remember { mutableIntStateOf(0) }
 
     val notifAccess = remember(tick) { NotificationAccess.isGranted(ctx) }
-    val notifStore = remember(tick) { NotifStore(ctx.filesDir) }
+    val notifStore = remember(tick) { NotifStore(ctx.filesDir, VoiceDock.db(ctx).assistant()) }
     val captured = remember(tick) { runCatching { notifStore.all().size }.getOrDefault(0) }
-    val memory = remember(tick) { MemoryStore(ctx.filesDir) }
+    val memory = remember(tick) { MemoryStore(ctx.filesDir, VoiceDock.db(ctx).assistant()) }
     val log = remember(tick) { CommandLog(ctx.filesDir) }
     val memories = remember(tick) { runCatching { memory.all().take(8) }.getOrDefault(emptyList()) }
     val commands = remember(tick) { runCatching { log.recent(8) }.getOrDefault(emptyList()) }
@@ -79,8 +80,8 @@ fun CommandsSection() {
 
     Text(
         tr(
-            "এখনো চালু হয়নি (পরের ভার্সনে): ফোন করা/ধরা/কাটা (v0.9), গান নিয়ন্ত্রণ (v0.10)। এই কমান্ডগুলো চিনতে পারে এবং কী করতে হবে জিজ্ঞেস করে — ভুয়া ‘হয়ে গেছে’ বলে না।",
-            "Not enabled yet (later versions): calls (v0.9), media (v0.10). Those are recognised and explained instead of being faked.",
+            "চেনা যায় এমন কমান্ড: অ্যাপ খোলা · মনে রাখা/মনে করা · জোরে পড়া · AI · কল করা/ধরা/কাটা · মেসেজের সারমর্ম ও উত্তর · গান নিয়ন্ত্রণ · আনডু · ‘শেষ যে মেসেজ দিয়েছে তাকে ফোন করো’।",
+            "Recognised commands: open an app · remember/recall · read aloud · ask the AI · place/answer/decline a call · message digest and reply · control the music · undo · “call the last person who messaged me”.",
         ),
         style = MaterialTheme.typography.bodySmall,
     )
@@ -129,6 +130,64 @@ fun CommandsSection() {
         ),
         style = MaterialTheme.typography.labelSmall,
     )
+
+    // ---- v0.10.0 media ----
+    HorizontalDivider(Modifier.padding(top = 8.dp))
+    Text(tr("মিউজিক", "Music"), style = MaterialTheme.typography.titleSmall)
+    Text(
+        tr(
+            if (notifAccess) "নিয়ন্ত্রণ: ✓ সম্ভব — যেকোনো প্লেয়ার (Spotify, YouTube Music, স্টক প্লেয়ার) যা এখন বাজছে।"
+            else "নিয়ন্ত্রণ: ✗ নোটিফিকেশন অ্যাক্সেস দরকার — সেটিংস → এই পেজেই ‘চালু করুন’ চাপুন।",
+            if (notifAccess) "Control: ✓ ready — any player that is active (Spotify, YouTube Music, the stock player)."
+            else "Control: ✗ needs notification access — use the button below.",
+        ),
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Text(
+        tr(
+            "“পরের গান”, “গান থামাও”, “গান চালাও” — অ্যাপটি এখন যে প্লেয়ারটি বাজছে তাকেই কমান্ড পাঠায়; কোনো প্লেয়ার না থাকলে সৎভাবে বলে দেয়।",
+            "“Next song”, “pause the music”, “play music” — the command goes to whichever player is active; with no player it says so instead of faking success.",
+        ),
+        style = MaterialTheme.typography.labelSmall,
+    )
+
+    // ---- v0.10.0 assistant role (long-press home) ----
+    HorizontalDivider(Modifier.padding(top = 8.dp))
+    Text(tr("ডিজিটাল অ্যাসিস্ট্যান্ট", "Digital assistant"), style = MaterialTheme.typography.titleSmall)
+    if (Build.VERSION.SDK_INT >= 29) {
+        val rm = remember(tick) { ctx.getSystemService(RoleManager::class.java) }
+        val holds = remember(tick) { runCatching { rm?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true }.getOrDefault(false) }
+        Text(
+            tr(
+                if (holds) "সহকারী ভূমিকা: ✓ চালু — হোম বাটন লম্বা চেপে VoiceDock খুলবে।"
+                else "সহকারী ভূমিকা: ✗ বন্ধ — চালু করলে হোম বাটন লম্বা চেপেই বাবল খুলবে।",
+                if (holds) "Assistant role: ✓ on — long-press home opens VoiceDock."
+                else "Assistant role: ✗ off — enable it to open the bubble with long-press home.",
+            ),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(Modifier.fillMaxWidth()) {
+            TextButton(onClick = {
+                runCatching {
+                    if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_ASSISTANT) && !rm.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
+                        ctx.startActivity(rm.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT))
+                    } else tick++
+                }
+            }) { Text(tr(if (holds) "সেটিংস দেখুন" else "সহকারী হিসেবে সেট করুন", if (holds) "Open settings" else "Make it the assistant")) }
+        }
+        Text(
+            tr(
+                "এটি Android-এর ‘ডিফল্ট অ্যাপ → ডিজিটাল সহকারী’ সেটিংস খুলবে। অন্য সহকারী (Google Assistant) বদলে যাবে — আপনি যেকোনো সময় ফিরিয়ে দিতে পারবেন।",
+                "This opens Android’s “Default apps → Digital assistant” screen. It replaces any other assistant (e.g. Google) — you can switch back at any time.",
+            ),
+            style = MaterialTheme.typography.labelSmall,
+        )
+    } else {
+        Text(
+            tr("এই Android সংস্করণে সহকারী ভূমিকা নেই (Android 10+ দরকার)।", "The assistant role needs Android 10 or newer."),
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
 
     // ---- v0.8.0 notification access ----
     HorizontalDivider(Modifier.padding(top = 8.dp))

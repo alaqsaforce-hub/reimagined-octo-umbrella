@@ -76,7 +76,11 @@ object VoiceDock {
     @Volatile private var wm: com.voicedock.ai.voice.WhisperModels? = null
     fun whisperModels(ctx: Context): com.voicedock.ai.voice.WhisperModels = wm ?: synchronized(this) { wm ?: com.voicedock.ai.voice.WhisperModels(ctx.applicationContext).also { wm = it } }
 
-    fun db(ctx: Context): AppDatabase = db ?: synchronized(this) { db ?: AppDatabase.build(ctx).also { db = it } }
+    fun db(ctx: Context): AppDatabase = db ?: synchronized(this) { db ?: AppDatabase.build(ctx).also { built ->
+        db = built
+        // v0.10.0: copy the v0.7-v0.9 JSON memory/notification files into Room exactly once.
+        runCatching { com.voicedock.ai.data.database.LegacyImport.runOnce(ctx.applicationContext, built) }
+    } }
     fun drafts(ctx: Context): DraftStore = RoomDraftStore(db(ctx).drafts())
     fun knowledge(ctx: Context): com.voicedock.ai.knowledge.KnowledgeRepo = com.voicedock.ai.knowledge.KnowledgeRepo(db(ctx).knowledge())
 

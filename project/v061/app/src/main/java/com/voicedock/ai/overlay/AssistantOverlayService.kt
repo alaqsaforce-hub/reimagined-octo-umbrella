@@ -56,7 +56,15 @@ import com.voicedock.ai.command.CommandDecision
 import com.voicedock.ai.command.CommandJson
 import com.voicedock.ai.command.CommandLog
 import com.voicedock.ai.command.CommandParser
+import com.voicedock.ai.command.ChainOutcome
+import com.voicedock.ai.command.ChainResolver
 import com.voicedock.ai.command.CommandPipeline
+import com.voicedock.ai.command.UndoEntry
+import com.voicedock.ai.command.UndoKind
+import com.voicedock.ai.command.UndoLog
+import com.voicedock.ai.command.UndoText
+import com.voicedock.ai.media.MediaControl
+import com.voicedock.ai.media.MediaText
 import com.voicedock.ai.command.CommandRegistry
 import com.voicedock.ai.command.CommandSpec
 import com.voicedock.ai.command.Intent as CmdIntent
@@ -120,11 +128,15 @@ class AssistantOverlayService : LifecycleService() {
     private var dictFormatted = false
 
     // ---- v0.7.0 commands ----
-    private val memory by lazy { MemoryStore(filesDir) }
+    private val memory by lazy { MemoryStore(filesDir, VoiceDock.db(this).assistant()) }
     private val commandLog by lazy { CommandLog(filesDir) }
     private val launcher by lazy { AppLauncher(this) }
-    private val notifStore by lazy { NotifStore(filesDir) }
+    private val notifStore by lazy { NotifStore(filesDir, VoiceDock.db(this).assistant()) }
     private val calls by lazy { CallController(this) }
+
+    /** v0.10.0 — single-slot undo (60 s). The actual revert lives in [undoRun]. */
+    private val undoLog = UndoLog()
+    private var undoRun: (() -> Boolean)? = null
     private val contacts by lazy { ContactResolver(this) }
     private val speaker by lazy { Speaker(this) }
     /** Buttons currently shown in the bubble, and the command waiting for a confirmation. */
@@ -293,6 +305,7 @@ class AssistantOverlayService : LifecycleService() {
         closeWindows()
         dictFormatted = false
         assistantDictationStarted = true
+        undoLog.clear(); undoRun = null
         lastDictationDraft = ""
         _dict.value = DictationBubbleState(
             visible = true, phase = DictationPhase.LISTENING,
@@ -335,6 +348,7 @@ class AssistantOverlayService : LifecycleService() {
                 onOpenSettings = { closeDictBubble(); openSettings() },
                 onCommand = { runCommand(state.liveText) },
                 onChoice = { onChoicePicked(it) },
+                onUndo = { runUndo() },
             )
         }
         val dm = resources.displayMetrics
@@ -521,6 +535,42 @@ class AssistantOverlayService : LifecycleService() {
     private fun handleCommand(specIn: CommandSpec, source: String) {
         var spec = specIn
         val bn = isBengali()
+        var chainAnnounce = ""
+        // v0.10.0 — chain: "শেষ যে মেসেজ দিয়েছে তাকে ফোন করো". The pronoun is replaced by a real, visible
+        // name from the notification log BEFORE anything is confirmed; no messages → honest refusal.
+        if (ChainResolver.isChain(spec)) {
+            if (!NotificationAccess.isGranted(this)) {
+                _dict.value = _dict.value.copy(
+                    note = tr(
+                        "‘শেষ যে মেসেজ দিয়েছে’ জানতে নোটিফিকেশন অ্যাক্সেস দরকার — সেটিংস → কমান্ডে চালু করুন।",
+                        "Knowing who messaged last needs notification access — enable it in Settings → Commands.",
+                    ),
+                    needsSetup = true, choices = emptyList(), answer = "",
+                )
+                ensureBubbleVisible()
+                commandLog.record(spec.raw, spec.intent, spec.confidence, source, "blocked", false, "no notification access")
+                return
+            }
+            when (val chain = ChainResolver.resolve(spec, notifStore.sendersSince(dayStart()))) {
+                is ChainOutcome.Resolved -> {
+                    spec = chain.spec
+                    chainAnnounce = ChainResolver.announced(spec, chain.name, bn)
+                }
+                is ChainOutcome.NoSenders -> {
+                    _dict.value = _dict.value.copy(
+                        note = tr(
+                            "আজ কারও মেসেজ পাওয়া যায়নি, তাই ‘শেষ যে মেসেজ দিয়েছে’ কাউকে পাওয়া গেল না।",
+                            "Nobody has messaged today, so there is no ‘last person’ to use.",
+                        ),
+                        choices = emptyList(), answer = "",
+                    )
+                    ensureBubbleVisible()
+                    commandLog.record(spec.raw, spec.intent, spec.confidence, source, "none", false, "no senders")
+                    return
+                }
+                ChainOutcome.NotAChain -> Unit
+            }
+        }
         // v0.9: a call needs a real number — resolve the contact before the confirmation card so the card
         // shows the name AND the number that will be dialled.
         if (spec.intent == CmdIntent.CALL_PLACE) {
@@ -611,6 +661,8 @@ class AssistantOverlayService : LifecycleService() {
             }
         }
         val candidates: Map<Slot, List<String>> = when {
+            // v0.10.0: "গান" alone is ambiguous between play and pause — offer the actions, never guess.
+            spec.intent == CmdIntent.MEDIA && spec.slot(Slot.MEDIA).isNullOrBlank() -> mapOf(Slot.MEDIA to MediaText.choices())
             spec.intent == CmdIntent.APP_LAUNCH && spec.slot(Slot.APP).isNullOrBlank() -> emptyMap()
             spec.intent == CmdIntent.APP_LAUNCH -> {
                 val hits = launcher.resolve(spec.slot(Slot.APP).orEmpty())
@@ -628,8 +680,9 @@ class AssistantOverlayService : LifecycleService() {
                 pendingSpec = spec
                 pendingSource = source
                 pendingChoices = listOf(d.confirm, d.cancel)
+                val question = if (chainAnnounce.isBlank()) d.question else "$chainAnnounce\n${d.question}"
                 _dict.value = _dict.value.copy(
-                    note = d.question, answer = "", providerLabel = "", needsSetup = false,
+                    note = question, answer = "", providerLabel = "", needsSetup = false,
                     busy = false, busyLabel = "",
                     choices = listOf(d.confirm.label, d.cancel.label),
                 )
@@ -700,8 +753,9 @@ class AssistantOverlayService : LifecycleService() {
         fun done(text: String, ok: Boolean, strategy: String) {
             _dict.value = _dict.value.copy(
                 answer = text, note = "", providerLabel = "", needsSetup = false,
-                busy = false, busyLabel = "", choices = emptyList(),
+                busy = false, busyLabel = "", choices = emptyList(), undoLabel = "",
             )
+            undoLog.clear(); undoRun = null
             ensureBubbleVisible()
             commandLog.record(spec.raw, spec.intent, spec.confidence, source, strategy, ok, text)
         }
@@ -743,6 +797,13 @@ class AssistantOverlayService : LifecycleService() {
                     else MemoryText.storedAnswer(e.text, bn),
                     e != null, "memory",
                 )
+                // v0.10.0 undo: the row exists, so it can genuinely be deleted again.
+                if (e != null) {
+                    offerUndo(
+                        label = tr("মনে রাখা: ${e.text.take(40)}", "remembered: ${e.text.take(40)}"),
+                        kind = UndoKind.MEMORY_ADD,
+                    ) { memory.forget(e.id) }
+                }
             }
 
             CmdIntent.MEMORY_RECALL -> {
@@ -856,6 +917,57 @@ class AssistantOverlayService : LifecycleService() {
                 }
             }
 
+            CmdIntent.MEDIA -> {
+                val action = MediaText.action(spec.slot(Slot.MEDIA).orEmpty())
+                if (action == null) {
+                    done(tr("কোন কাজটা করবো ঠিক বুঝিনি।", "I did not catch which media action you meant."), false, "media:none")
+                } else {
+                    val r = MediaControl.perform(this, action)
+                    when {
+                        r.ok && r.detail == "already" -> done(
+                            when (action) {
+                                com.voicedock.ai.media.MediaAction.PAUSE -> tr("মিউজিক আগেই থামানো আছে।", "The music is already paused.")
+                                com.voicedock.ai.media.MediaAction.PLAY -> tr("মিউজিক আগেই চলছে।", "The music is already playing.")
+                                else -> tr("কিছু বদলায়নি।", "Nothing changed.")
+                            },
+                            true, "media:already",
+                        )
+                        r.ok -> {
+                            done(MediaText.done(action, bn, r.title), true, "media:${action.name.lowercase()}")
+                            // Undo only where the inverse is real (play<->pause, next<->previous).
+                            val inv = MediaText.inverse(action)
+                            if (inv != null) {
+                                offerUndo(
+                                    label = tr("মিউজিক: ${MediaText.label(action)}", "media: ${MediaText.label(action)}"),
+                                    kind = UndoKind.MEDIA,
+                                    mediaAction = inv.name,
+                                ) { MediaControl.perform(this, inv).ok }
+                            }
+                        }
+                        else -> {
+                            done(MediaText.failed(bn, r.detail), false, "media:none")
+                            if (r.detail == "no_access") _dict.value = _dict.value.copy(needsSetup = true)
+                        }
+                    }
+                }
+            }
+
+            CmdIntent.UNDO -> {
+                val entry = undoLog.take()
+                val run = undoRun
+                undoRun = null
+                if (entry == null || run == null) {
+                    done(UndoText.nothing(bn), false, "undo:none")
+                } else {
+                    val ok = runCatching { run() }.getOrDefault(false)
+                    _dict.value = _dict.value.copy(undoLabel = "")
+                    done(
+                        if (ok) UndoText.done(entry, bn) else tr("ফিরিয়ে নেওয়া যায়নি।", "Could not undo it."),
+                        ok, "undo:${entry.kind.name.lowercase()}",
+                    )
+                }
+            }
+
             CmdIntent.ASK_AI -> {
                 _dict.value = _dict.value.copy(liveText = spec.slot(Slot.QUERY) ?: spec.raw, choices = emptyList())
                 askDictated()
@@ -866,6 +978,35 @@ class AssistantOverlayService : LifecycleService() {
                 tr("এই কমান্ডটি এখনো চালু হয়নি।", "That command is not enabled yet."), false, "none",
             )
         }
+    }
+
+    // ------------------------------------------------------------------ undo (v0.10.0)
+
+    /** Offers a one-step undo for an action that can genuinely be reversed. */
+    private fun offerUndo(label: String, kind: UndoKind, mediaAction: String = "", run: () -> Boolean) {
+        undoLog.push(UndoEntry(java.util.UUID.randomUUID().toString(), label, System.currentTimeMillis(), kind, mediaAction))
+        undoRun = run
+        _dict.value = _dict.value.copy(undoLabel = UndoText.chip(isBengali()))
+    }
+
+    /** The ↩ chip (or "আনডু" spoken) was used. One shot: an undo cannot be undone. */
+    private fun runUndo() {
+        val entry = undoLog.take()
+        val run = undoRun
+        undoRun = null
+        val bn = isBengali()
+        if (entry == null || run == null) {
+            _dict.value = _dict.value.copy(undoLabel = "", answer = UndoText.nothing(bn), note = "", needsSetup = false)
+            ensureBubbleVisible()
+            return
+        }
+        val ok = runCatching { run() }.getOrDefault(false)
+        _dict.value = _dict.value.copy(
+            undoLabel = "", note = "", needsSetup = false,
+            answer = if (ok) UndoText.done(entry, bn) else tr("ফিরিয়ে নেওয়া যায়নি।", "Could not undo it."),
+        )
+        ensureBubbleVisible()
+        commandLog.record("undo", CmdIntent.UNDO, 1.0, "tap", "undo:${entry.kind.name.lowercase()}", ok, entry.label)
     }
 
     // ------------------------------------------------------------------ activation

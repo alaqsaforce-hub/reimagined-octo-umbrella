@@ -44,6 +44,8 @@ data class DictationBubbleState(
     val needsSetup: Boolean = false,
     /** v0.7.0 — clarification / confirmation buttons (≤ 4). Empty = none. */
     val choices: List<String> = emptyList(),
+    /** v0.10.0 — non-blank when the last action can honestly be reversed; the ↩ chip is shown. */
+    val undoLabel: String = "",
 )
 
 /** Label for one action chip (bn/en). */

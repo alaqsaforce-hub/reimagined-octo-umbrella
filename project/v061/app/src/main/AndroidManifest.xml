@@ -64,6 +64,17 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- v0.10.0 — digital assistant (ROLE_ASSISTANT): long-press home / the assist gesture opens
+                 VoiceDock, which starts the bubble and asks for the microphone. Declaring ASSIST is what
+                 makes VoiceDock appear in Settings → Default apps → Digital assistant. -->
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
             <!-- "Back to app" link on the sign-in finished page (voicedock://auth). Carries no data. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

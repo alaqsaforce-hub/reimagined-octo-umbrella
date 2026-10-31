@@ -31,7 +31,9 @@ object CommandRegistry {
         Intent.MSG_DIGEST to IntentMeta(emptySet(), false, true, "আজকের মেসেজের সারমর্ম", "Today's messages at a glance"),
         Intent.MSG_REPLY to IntentMeta(setOf(Slot.CONTACT, Slot.TEXT), true, true, "মেসেজে উত্তর পাঠানো", "Reply to a message"),
         Intent.MSG_READ to IntentMeta(emptySet(), false, true, "মেসেজ জোরে পড়া", "Read messages aloud"),
-        Intent.MEDIA to IntentMeta(setOf(Slot.QUERY), false, false, "মিউজিক নিয়ন্ত্রণ (v0.10.0)", "Media control (v0.10.0)"),
+        // v0.10.0: media runs over the active MediaSession (any player), no per-app settings.
+        Intent.MEDIA to IntentMeta(setOf(Slot.MEDIA), false, true, "মিউজিক নিয়ন্ত্রণ", "Control the music"),
+        Intent.UNDO to IntentMeta(emptySet(), false, true, "শেষ কাজটি ফিরিয়ে নেওয়া", "Undo the last action"),
         Intent.UNKNOWN to IntentMeta(setOf(Slot.QUERY), false, false, "বোঝা যায়নি", "Not understood"),
     )
 

@@ -27,6 +27,8 @@ enum class Intent(val id: String) {
     MSG_REPLY("msg.reply"),
     MSG_READ("msg.read"),
     MEDIA("media.control"),
+    // v0.10.0: one step back for the actions that can honestly be reversed.
+    UNDO("undo"),
     UNKNOWN("unknown");
 
     companion object {
@@ -42,7 +44,9 @@ enum class Slot(val key: String) {
     APP("app"),
     CONTACT("contact"),
     TEXT("text"),
-    QUERY("query");
+    QUERY("query"),
+    /** v0.10.0 — which transport command: play / pause / next / previous / stop. */
+    MEDIA("media");
 
     companion object {
         fun from(raw: String?): Slot? {

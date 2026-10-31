@@ -1,5 +1,8 @@
 package com.voicedock.ai.memory
 
+import com.voicedock.ai.data.database.AssistantDao
+import com.voicedock.ai.data.database.MemoryRow
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -26,11 +29,18 @@ data class MemoryDoc(
     val entries: List<MemoryEntry> = emptyList(),
 )
 
-class MemoryStore(private val dir: File) {
+/**
+ * v0.10.0 — storage is Room when a [dao] is supplied (the app always does), with the original JSON file
+ * kept as the import/test path ([dao] == null). Same behaviour either way: newest first, blank text
+ * ignored, capped at [MAX_ENTRIES].
+ */
+class MemoryStore(private val dir: File, private val dao: AssistantDao? = null) {
     private val file: File get() = File(dir, FILE_NAME)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; prettyPrint = false }
 
-    fun all(): List<MemoryEntry> = read().entries
+    fun all(): List<MemoryEntry> = dao?.let { d ->
+        runBlocking { d.memories(MAX_ENTRIES) }.map { MemoryEntry(it.id, it.text, it.createdAt, it.source) }
+    } ?: read().entries
 
     /** Newest first, capped. Blank text is ignored. */
     @Synchronized
@@ -38,6 +48,10 @@ class MemoryStore(private val dir: File) {
         val clean = text.trim().take(MAX_TEXT)
         if (clean.isBlank()) return null
         val entry = MemoryEntry(UUID.randomUUID().toString(), clean, now, source)
+        if (dao != null) {
+            runBlocking { dao.addMemory(MemoryRow(entry.id, entry.text, entry.createdAt, entry.source), MAX_ENTRIES) }
+            return entry
+        }
         val doc = read()
         write(doc.copy(entries = (listOf(entry) + doc.entries).take(MAX_ENTRIES)))
         return entry
@@ -45,6 +59,11 @@ class MemoryStore(private val dir: File) {
 
     @Synchronized
     fun forget(id: String): Boolean {
+        if (dao != null) {
+            val before = runBlocking { dao.memoryCount() }
+            runBlocking { dao.forgetMemory(id) }
+            return runBlocking { dao.memoryCount() } < before
+        }
         val doc = read()
         val kept = doc.entries.filterNot { it.id == id }
         if (kept.size == doc.entries.size) return false
@@ -53,7 +72,10 @@ class MemoryStore(private val dir: File) {
     }
 
     @Synchronized
-    fun clear() = write(MemoryDoc())
+    fun clear() {
+        if (dao != null) { runBlocking { dao.clearMemory() }; return }
+        write(MemoryDoc())
+    }
 
     fun search(query: String, limit: Int = 5): List<MemoryEntry> = MemoryText.search(all(), query, limit)
 

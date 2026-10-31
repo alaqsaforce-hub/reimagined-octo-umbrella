@@ -372,3 +372,32 @@ existing install risks the user's drafts. It moves to v0.10 with a tested `Migra
 
 **Next:** v0.10.0 — media control over the active `MediaSession`, `ROLE_ASSISTANT` (long-press home),
 command chains ("call the last person who messaged me"), undo on result cards, and the Room migration.
+
+---
+
+## v0.10.0 "everything promised, including the database" — Phase 4 (built & verified 2026-10-31)
+
+**Media** runs over `MediaSessionManager` — one code path for every player that publishes a session, no
+package lists. Play / pause / next / previous / stop, with pause and stop kept distinct; a vague "গান"
+asks for the action instead of guessing; three honest failure sentences (`no_access`, `no_player`, already
+in that state). **Chains**: "শেষ যে মেসেজ দিয়েছে তাকে ফোন করো" resolves the recipient from the
+notification log and then runs the ordinary call command — the confirmation card shows the real name and
+number. **Undo**: an ↩ chip (or "আনডু", 60 s) for the two things that can genuinely be reversed — a saved
+memory and a media transport command; nothing is offered for calls, messages or app launches.
+**Assistant role**: `ROLE_ASSISTANT` + `ACTION_ASSIST` handling, so long-press home opens the same bubble.
+
+**Room migration — the v0.9.0 deferral is closed.** `memory_entries` and `notif_entries` are schema v3
+tables with an explicit `MIGRATION_2_3`; the old JSON files are imported once by `LegacyImport`, renamed
+(not deleted), and the whole upgrade is tested against a genuine v2 database built from `2.json`.
+
+**Status:** lint **0 errors / 32 warnings**; **344 tests / 0 failures / 45 suites** (38 new: media 14,
+chains 11, undo 10, Room migration/import 3); schema `3.json` committed; APK `versionCode 17 / 0.10.0`,
+minSdk 26, v2-signed, 16 KB-aligned. Device test pending — 11 checks in `MANUAL-TESTS-v0.6.md` § v0.10.0
+(check 11, upgrading over v0.9.0, is the one that matters most).
+
+**Bugs found and fixed while building this:** "রহিমকে ফোন করো" resolved the contact to the lone vowel sign
+`"ো"` (the verb's trailing mark); "গান থামাও" matched both the pause and the stop keyword lists.
+
+**Next (v1.0.0):** hotword ("হেই ভয়েসডক") as an opt-in foreground service, three entry points
+(floating icon / assist gesture / hotword), onboarding that walks through each permission with the reason,
+polish and a full manual pass. Optional from the plan: C9 voice fingerprint gate, C10 TTS reads messages.

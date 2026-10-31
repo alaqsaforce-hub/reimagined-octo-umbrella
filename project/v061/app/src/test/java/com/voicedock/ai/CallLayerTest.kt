@@ -156,9 +156,10 @@ class CallLayerTest {
     }
 
     @Test
-    fun `media is still the honest future-phase example`() {
-        val d = CommandPipeline.decide(CommandSpec.of(Intent.MEDIA, "play", 0.9, Slot.QUERY to "next"), bengali = false)
+    fun `media without an action asks which action`() {
+        // v0.10.0: media is available, so a vague request now asks about the action itself.
+        val d = CommandPipeline.decide(CommandSpec.of(Intent.MEDIA, "music", 0.9), bengali = false)
         assertTrue(d is CommandDecision.Clarify)
-        assertTrue((d as CommandDecision.Clarify).question.contains("v0.10"))
+        assertTrue((d as CommandDecision.Clarify).question.contains("music"))
     }
 }

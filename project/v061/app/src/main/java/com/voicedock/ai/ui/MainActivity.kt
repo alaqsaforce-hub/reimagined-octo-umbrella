@@ -65,6 +65,8 @@ class MainActivity : ComponentActivity() {
     private var resumeTick by mutableIntStateOf(0)
     /** v0.6 just-in-time consent dialog for screen context. */
     private var showAssistantConsent by mutableStateOf(false)
+    /** v0.10.0 — true when the activity was opened by the system assist gesture / assistant role. */
+    private var startBubbleAfterLaunch by mutableStateOf(false)
     private var afterMicGrant: (() -> Unit)? = null
 
     private val micLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -135,6 +137,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        // The assist gesture lands here: same bubble as the floating icon, no extra screen.
+        if (startBubbleAfterLaunch) { startBubbleAfterLaunch = false; startBubble() }
     }
 
     private fun title(s: Screen) = when (s) {
@@ -150,9 +154,18 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onResume() { super.onResume(); resumeTick++ }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+        if (startBubbleAfterLaunch) { startBubbleAfterLaunch = false; startBubble() }
+    }
 
     private fun handleIntent(i: Intent?) {
+        // v0.10.0: holding ROLE_ASSISTANT means the system hands us long-press-home (ACTION_ASSIST).
+        // The honest response is to do what an assistant does: start the bubble and listen.
+        if (i?.action == Intent.ACTION_ASSIST || i?.action == "android.intent.action.VOICE_COMMAND") {
+            startBubbleAfterLaunch = true
+        }
         when (i?.getStringExtra(EXTRA_SCREEN)) {
             "workspace" -> screen = Screen.WORKSPACE
             "drafts" -> screen = Screen.DRAFTS

@@ -31,6 +31,11 @@ object CommandPipeline {
         spec: CommandSpec,
         bengali: Boolean,
         candidates: Map<Slot, List<String>> = emptyMap(),
+        /**
+         * Which intents this build can actually run. Defaults to the registry; injected only by tests so
+         * step 2 ("understood, but not in this version") stays covered now that every intent ships.
+         */
+        isAvailable: (Intent) -> Boolean = CommandRegistry::isAvailable,
     ): CommandDecision {
         fun bn(b: String, e: String) = if (bengali) b else e
 
@@ -41,7 +46,7 @@ object CommandPipeline {
         }
 
         // 2 — recognised, but this version cannot act on it yet
-        if (!CommandRegistry.isAvailable(spec.intent)) {
+        if (!isAvailable(spec.intent)) {
             val help = CommandRegistry.help(spec.intent, bengali)
             return CommandDecision.Clarify(
                 bn("$help — এই ভার্সনে এখনো চালু হয়নি।", "$help — not enabled in this version yet."),
@@ -62,6 +67,7 @@ object CommandPipeline {
                 Slot.CONTACT -> bn("কাকে?", "Which contact?")
                 Slot.TEXT -> bn("কী মনে রাখবো? আবার বলো।", "What should I remember? Say it again.")
                 Slot.QUERY -> bn("কী সম্পর্কে?", "About what?")
+                Slot.MEDIA -> bn("গানের কী করবো?", "What should I do with the music?")
             }
             val choices = if (options.isEmpty()) {
                 listOf(Choice(bn("বাতিল", "Cancel"), Intent.UNKNOWN))
@@ -103,7 +109,12 @@ object CommandPipeline {
                 "send to ‘${spec.slot(Slot.CONTACT).orEmpty()}’: “${spec.slot(Slot.TEXT).orEmpty().take(60)}”",
             )
             Intent.MSG_READ -> bn("মেসেজ পড়ে শোনাবে", "read messages aloud")
-            Intent.MEDIA -> bn("মিউজিক নিয়ন্ত্রণ করবে", "control the music")
+            Intent.MEDIA -> {
+                val a = spec.slot(Slot.MEDIA).orEmpty()
+                val what = com.voicedock.ai.media.MediaText.action(a)?.let { com.voicedock.ai.media.MediaText.label(it) }
+                bn("মিউজিক: ${what ?: "নিয়ন্ত্রণ"}", "media: ${what ?: (a.ifBlank { "control" })}")
+            }
+            Intent.UNDO -> bn("শেষ কাজটি ফিরিয়ে নেবে", "undo the last action")
             Intent.UNKNOWN -> bn("কিছু না", "nothing")
         }
     }

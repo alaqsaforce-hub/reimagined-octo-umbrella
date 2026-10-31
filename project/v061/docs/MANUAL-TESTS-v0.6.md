@@ -154,3 +154,32 @@ Setup: floating icon visible, Accessibility on, anything else open (e.g. the hom
 6. **WhatsApp call** → "ধরো" → either answered via the notification button (`notification_action`) or the
    bubble says honestly that it could not — both are correct outcomes; a silent failure is not.
 7. Say a number: "০১৭xxxxxxx নম্বরে ফোন কর" → confirm card must show the digits (Bengali digits mapped).
+
+---
+
+## v0.10.0 — media, chains, undo, assistant role, database
+
+**Media (needs notification access, already on from v0.8.0)**
+1. Start a song in Spotify / YouTube Music → close the app → "পরের গান" → the track changes and the bubble
+   shows the new title (or just "পরের গান ✓" if the player publishes none).
+2. "গান থামাও" → it pauses and *stays* paused (a stop would have cleared the queue). "গান চালাও" → resumes.
+3. With no player active: "গান চালাও" → must say "এখন কোনো প্লেয়ার চলছে না…" and never "✓".
+4. Say only "গান" → four buttons appear (চালাও / থামাও / পরের / আগের). Tapping one must act.
+
+**Chain**
+5. Get a message from one person (leave its notification in the shade) → "শেষ যে মেসেজ দিয়েছে তাকে ফোন করো"
+   → the confirmation card must show **that person's name and number**; cancel it.
+6. Same sentence with no notification access → it must ask for the setting, not dial anyone.
+
+**Undo**
+7. "মনে রাখো কাল ৩টায় মিটিং" → a "↩ ফিরিয়ে নাও" chip appears → tap it → Settings → কমান্ড must no longer
+   list that memory.
+8. Pause the music, then tap ↩ → the music resumes. Say "আনডু" after 2 minutes → "কিছু নেই (৬০ সেকেন্ড)".
+9. After placing a call there must be **no** undo chip (that action cannot be reversed).
+
+**Assistant role (Android 10+)**
+10. Settings → কমান্ড → ডিজিটাল অ্যাসিস্ট্যান্ট → সেট করুন → long-press home → the bubble must appear.
+
+**Database migration — the important one**
+11. Upgrade *over* the existing v0.9.0 install (do not uninstall): Settings → কমান্ড must still list the
+    memories and the notification count from before. Nothing may crash on first launch.

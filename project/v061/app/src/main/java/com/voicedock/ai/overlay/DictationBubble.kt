@@ -62,6 +62,8 @@ fun DictationBubble(
     onCommand: () -> Unit = {},
     /** v0.7.0 — a clarification / confirmation button was tapped. */
     onChoice: (Int) -> Unit = {},
+    /** v0.10.0 — take back the action that just ran (only offered when it is real). */
+    onUndo: () -> Unit = {},
 ) {
     val cfg = LocalConfiguration.current
     val maxWidth = (cfg.screenWidthDp * 0.68f).dp
@@ -135,6 +137,23 @@ fun DictationBubble(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(top = 4.dp),
                     )
+                }
+
+                // ---- undo (v0.10.0): shown only for actions that can genuinely be reversed ----
+                if (state.undoLabel.isNotBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        onClick = onUndo,
+                        modifier = Modifier.padding(top = 6.dp),
+                    ) {
+                        Text(
+                            state.undoLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        )
+                    }
                 }
 
                 // ---- clarification / confirmation buttons (v0.7.0) ----

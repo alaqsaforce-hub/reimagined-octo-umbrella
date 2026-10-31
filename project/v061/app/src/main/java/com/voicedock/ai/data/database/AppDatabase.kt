@@ -68,10 +68,20 @@ interface DraftDao {
  * [Migrations.ALL]; the exported schema JSON (app/schemas) is committed. No destructive fallback —
  * a missing migration must fail loudly instead of wiping the user's data.
  */
-@Database(entities = [DictationDraft::class, KbDocument::class, KbChunk::class, KbChunkFts::class], version = 2, exportSchema = true)
+@Database(
+    entities = [
+        DictationDraft::class, KbDocument::class, KbChunk::class, KbChunkFts::class,
+        MemoryRow::class, NotifRow::class,
+    ],
+    version = 3,
+    exportSchema = true,
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun drafts(): DraftDao
     abstract fun knowledge(): KnowledgeDao
+
+    /** v0.10.0 — assistant memory + notification log (were JSON files). */
+    abstract fun assistant(): AssistantDao
 
     companion object {
         const val NAME = "voicedock.db"
@@ -97,5 +107,22 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2)
+    /**
+     * v0.10.0: assistant memory and the notification log become tables. The SQL is the exact DDL Room
+     * generated for schema 3 (see app/schemas/3.json) — the JSON files themselves are imported once by
+     * [LegacyImport], so no memory is lost by the move.
+     */
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            listOf(
+                "CREATE TABLE IF NOT EXISTS `memory_entries` (`id` TEXT NOT NULL, `text` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `source` TEXT NOT NULL, PRIMARY KEY(`id`))",
+                "CREATE INDEX IF NOT EXISTS `index_memory_entries_createdAt` ON `memory_entries` (`createdAt`)",
+                "CREATE TABLE IF NOT EXISTS `notif_entries` (`key` TEXT NOT NULL, `pkg` TEXT NOT NULL, `appLabel` TEXT NOT NULL, `sender` TEXT NOT NULL, `text` TEXT NOT NULL, `at` INTEGER NOT NULL, `canReply` INTEGER NOT NULL, `summary` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+                "CREATE INDEX IF NOT EXISTS `index_notif_entries_at` ON `notif_entries` (`at`)",
+                "CREATE INDEX IF NOT EXISTS `index_notif_entries_sender` ON `notif_entries` (`sender`)",
+            ).forEach { db.execSQL(it) }
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 }

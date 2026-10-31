@@ -21,7 +21,7 @@ import com.voicedock.ai.settings.SettingsStore
  */
 class VoiceDockNotificationListener : NotificationListenerService() {
 
-    private val store by lazy { NotifStore(filesDir) }
+    private val store by lazy { NotifStore(filesDir, com.voicedock.ai.VoiceDock.db(this).assistant()) }
 
     override fun onListenerConnected() {
         super.onListenerConnected()

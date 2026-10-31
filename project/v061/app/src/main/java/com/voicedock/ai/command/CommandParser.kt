@@ -49,6 +49,10 @@ object CommandParser {
         fun spec(i: Intent, conf: Double, vararg slots: Pair<Slot, String>) =
             CommandSpec.of(i, raw, conf, *slots)
 
+        // --- undo (v0.10.0): one step back, only for what can honestly be reversed ---
+        if (containsAny(low, "আনডু", "আনডো", "undo", "ফিরিয়ে নাও")) {
+            return spec(Intent.UNDO, 0.95)
+        }
         // --- memory recall (must come before "রাখো") ---
         if (containsAny(low, "মনে পড়", "মনে আছে", "কী বলেছিলাম", "কি বলেছিলাম", "মনে রাখতে বলেছিলাম", "recall", "what did you remember", "what did i tell you")) {
             return spec(Intent.MEMORY_RECALL, 0.95, Slot.QUERY to raw.trim())
@@ -100,16 +104,20 @@ object CommandParser {
         if (containsAny(low, "ফোন কর", "ফোন দাও", "কল কর", "call mom", "call ") || low.trim().endsWith("call")) {
             // Bangla puts the person first: "মাকে ফোন কর" → the name is BEFORE the verb.
             val after = afterAny(raw, low, "ফোন কর", "ফোন দাও", "কল কর", "call")
-            val who = after.ifBlank { beforeAny(raw, low, "ফোন কর", "ফোন দাও", "কল কর", "call") }
+            // "রহিমকে ফোন করো" leaves only the vowel sign of "করো" behind — that is not a name.
+            val who = if (meaningful(after)) after else beforeAny(raw, low, "ফোন কর", "ফোন দাও", "কল কর", "call")
             return spec(Intent.CALL_PLACE, 0.9, Slot.CONTACT to who)
         }
         // --- messages (v0.8) ---
         if (containsAny(low, "সারমর্ম", "কে কে মেসেজ", "কে মেসেজ দিয়েছে", "মেসেজ দিয়েছে", "summarise", "summarize", "digest")) {
             return spec(Intent.MSG_DIGEST, 0.9, Slot.QUERY to raw.trim())
         }
-        // --- media (v0.10) ---
-        if (containsAny(low, "পরের গান", "গান চালাও", "গান বাজাও", "next song", "play music", "pause music", "গান বন্ধ")) {
-            return spec(Intent.MEDIA, 0.9, Slot.QUERY to raw.trim())
+        // --- media (v0.10): the action is extracted here; the session is found at execution time. ---
+        if (com.voicedock.ai.media.MediaText.looksLikeMedia(low)) {
+            val action = com.voicedock.ai.media.MediaText.action(raw)
+            // No action ("গান") stays vague on purpose: the pipeline asks instead of guessing play vs pause.
+            return if (action == null) spec(Intent.MEDIA, 0.9, Slot.QUERY to raw.trim())
+            else spec(Intent.MEDIA, 0.95, Slot.MEDIA to action.name.lowercase(), Slot.QUERY to raw.trim())
         }
         // --- app launch ---
         if (containsAny(low, "খোলো", "খুলে দাও", "খোল ", "ওপেন", "open ", "launch ", "চালু কর")) {
@@ -150,6 +158,13 @@ object CommandParser {
     // ---------------------------------------------------------------- helpers
 
     private fun containsAny(low: String, vararg keys: String) = keys.any { low.contains(it) }
+
+    /**
+     * True when a fragment has at least one letter or digit of its own. A lone Bengali vowel sign
+     * (U+09CB, a combining mark) is not a name, and `java.lang.Character` agrees: it is neither a letter
+     * nor a digit.
+     */
+    fun meaningful(s: String): Boolean = s.any { it.isLetterOrDigit() }
 
     private fun afterAny(text: String, low: String, vararg keys: String): String {
         var best = -1
