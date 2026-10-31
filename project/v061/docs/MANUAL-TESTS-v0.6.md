@@ -101,3 +101,24 @@ the floating icon visible, WhatsApp open on a chat with the message box tapped o
 
 Also check: tapping the icon a second time closes the bubble and stops listening; **long-pressing**
 the icon still opens the old panel (agent chat / drafts) — that is the intentional fallback path.
+
+---
+
+## v0.7.0 — commands (hold ⏎)
+
+Setup: floating icon visible, Accessibility on, anything else open (e.g. the home screen).
+
+1. **Open an app.** Dictate "হোয়াটসঅ্যাপ খোলো", then **hold** the ⏎ chip (about half a second).
+   *Pass:* WhatsApp opens and the bubble says "WhatsApp খোলা হলো ✓". *Note:* a plain tap on ⏎ must
+   still just insert the text — the two gestures must not be confused.
+2. **Remember.** Dictate "মনে রাখো কাল ৩টায় ডাক্তারের কাছে যেতে হবে", hold ⏎ → "মনে রাখলাম ✓ …".
+   Settings → কমান্ড must list it **with the Bengali ৩ intact**.
+3. **Recall.** Dictate "আমি কাল কী মনে রাখতে বলেছিলাম?", hold ⏎ → the stored line comes back (and is
+   spoken if "উত্তর জোরে পড়ে শোনাও" is on).
+4. **Refuse to guess.** Dictate "উফ আজ অনেক গরম", hold ⏎ → four buttons (অ্যাপ খোলা / মনে রাখা /
+   মনে করা কথা / AI-কে জিজ্ঞাসা) and **no** action. Nothing may happen until a button is tapped.
+5. **Honest about future versions.** Dictate "মাকে ফোন কর", hold ⏎ → it says the call commands arrive
+   in v0.9.0 and offers "AI-কে জিজ্ঞেস করো" / "বাতিল". It must not dial.
+6. **Ambiguity.** If both WhatsApp and WhatsApp Business are installed: "whatsapp খোলো" → two app
+   buttons, and picking one opens it.
+7. **Log.** Settings → কমান্ড shows each of the above with ✓/✗, `offline` or `model`, and the strategy.

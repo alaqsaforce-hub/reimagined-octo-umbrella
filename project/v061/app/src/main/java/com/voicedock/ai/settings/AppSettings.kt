@@ -98,6 +98,11 @@ data class AppSettings(
     val assistantDimBlur: Boolean = true,
     /** User-maintained probe blocklist (package names). Checked BEFORE the window is traversed. */
     val probeBlockedPackages: List<String> = emptyList(),
+    // ---- v0.7.0 commands ----
+    /** Spoken/typed commands ("হোয়াটসঅ্যাপ খোলো") are understood instead of only inserted. */
+    val commandsEnabled: Boolean = true,
+    /** Speak results aloud when a command asks for it (TTS). */
+    val speakResults: Boolean = true,
     /** Opt-in local crash reports: enabled by default only in debug builds. */
     val crashLoggingEnabled: Boolean = com.voicedock.ai.BuildConfig.DEBUG,
 ) {

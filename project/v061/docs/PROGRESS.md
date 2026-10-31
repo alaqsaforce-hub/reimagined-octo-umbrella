@@ -296,3 +296,30 @@ offline answer whenever 💬 cannot reach a provider, so the bubble never shows 
 **Plan for the Jarvis features:** `docs/JARVIS-UPGRADE-PLAN.md` — capability table, Android
 feasibility per feature (calls, WhatsApp calls, notification reading, media, hotword), `command/`
 package design, phases v0.7 → v1.0, and the build/verify procedure for each.
+
+---
+
+## v0.7.0 "understands me" — Phase 1 of the Jarvis plan (built & verified 2026-10-31)
+
+Holding ⏎ on the dictation bubble now treats the sentence as a **command** instead of text: offline
+Bangla/English patterns first (no key, no network), the model only when they find nothing, then a
+5-step decision layer — not understood? ask with ≤4 buttons; recognised but a later phase? say which
+version and offer an alternative; missing a slot? ask with the candidates the phone knows;
+destructive? confirm; otherwise execute. Live in this build: open any app by name (Bangla aliases
+included), save/recall on-device memories, read aloud via TTS, ask the AI; call/message/media
+intents are **recognised and explained, never faked**.
+
+**Status:** `:app:lintDebug` 0 errors / 30 warnings; **271 tests / 0 failures / 40 suites** (30 new
+in `CommandLayerTest`); APK `versionCode 14 / 0.7.0`, minSdk 26, v2-signed, 16 KB-aligned.
+Device test pending — 7 checks in `MANUAL-TESTS-v0.6.md` § v0.7.0.
+
+**Two real bugs the new tests caught before shipping:** Java's `\p{L}` regex strips Bengali
+combining marks (virama/matras), which broke every Bangla name match; and digit normalisation was
+losing `৩` from stored memories (fixed with a length-preserving `softNormalize` + cutting slot values
+from the user's original words).
+
+**Deviations from the plan, deliberately:** no `QUERY_ALL_PACKAGES` (the existing `<queries>` LAUNCHER
+declaration already exposes launchable apps); memory is a capped JSON file in this phase, not Room —
+`NotifStore` in v0.8 will need a migration anyway, and that is the right moment for one.
+
+**Next:** v0.8.0 — real `NotificationListenerService`, message digest per sender, Direct Reply.

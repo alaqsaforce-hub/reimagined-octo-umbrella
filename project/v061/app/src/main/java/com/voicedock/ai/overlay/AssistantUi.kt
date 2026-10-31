@@ -42,6 +42,8 @@ data class DictationBubbleState(
     val note: String = "",
     /** v0.6.7 — the note is an AI setup problem; show ⚙ to fix it in Settings. */
     val needsSetup: Boolean = false,
+    /** v0.7.0 — clarification / confirmation buttons (≤ 4). Empty = none. */
+    val choices: List<String> = emptyList(),
 )
 
 /** Label for one action chip (bn/en). */

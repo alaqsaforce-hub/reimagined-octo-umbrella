@@ -1,0 +1,152 @@
+package com.voicedock.ai.command
+
+/**
+ * v0.7.0 — sentence → [CommandSpec].
+ *
+ * Two routes, cheapest first:
+ *  1. [offline] — deterministic Bangla/English patterns. Runs always, works without internet or an AI key.
+ *  2. the model — [prompt] asks for one JSON object; [CommandJson] parses it strictly. Only used when the
+ *     offline pass finds nothing, so a normal command never depends on the network.
+ *
+ * If both fail the result is [Intent.UNKNOWN] and the pipeline asks the user instead of acting.
+ */
+object CommandParser {
+
+    private const val MIN_CONFIDENCE = 0.7
+
+    /**
+     * Display/cleanup form: Bengali digits become ASCII, punctuation becomes a space, spacing collapses.
+     * NOT used for extracting slot values — it changes the string length (see [softNormalize]).
+     */
+    fun normalize(text: String): String {
+        val sb = StringBuilder(text.length)
+        for (c in text) {
+            sb.append(
+                when (c) {
+                    in '০'..'৯' -> ('0' + (c - '০'))
+                    '।', '?', '!', ',', '.', ';', ':', '"', '\'', '‘', '’', '“', '”' -> ' '
+                    else -> c
+                },
+            )
+        }
+        return sb.toString().replace(Regex("\\s+"), " ").trim()
+    }
+
+    /**
+     * Length-preserving form (one char in, one char out), so an index found here can be used to cut the
+     * ORIGINAL sentence. Only Bengali digits are mapped; everything else is untouched.
+     */
+    fun softNormalize(text: String): String = buildString(text.length) {
+        for (c in text) append(if (c in '০'..'৯') ('0' + (c - '০')) else c)
+    }
+
+    /** Deterministic patterns. Confidence 0.95 = explicit phrasing, 0.8 = weaker hint. */
+    fun offline(raw: String): CommandSpec {
+        // Matching uses a length-preserving form so slot values can be cut from the user's own words.
+        val low = softNormalize(raw).lowercase()
+        if (low.isBlank()) return CommandSpec.unknown(raw)
+
+        fun spec(i: Intent, conf: Double, vararg slots: Pair<Slot, String>) =
+            CommandSpec.of(i, raw, conf, *slots)
+
+        // --- memory recall (must come before "রাখো") ---
+        if (containsAny(low, "মনে পড়", "মনে আছে", "কী বলেছিলাম", "কি বলেছিলাম", "মনে রাখতে বলেছিলাম", "recall", "what did you remember", "what did i tell you")) {
+            return spec(Intent.MEMORY_RECALL, 0.95, Slot.QUERY to raw.trim())
+        }
+        // --- remember ---
+        val remember = listOf("মনে রাখো", "মনে রাখ ", "মনে রাখ", "remember that", "remember ")
+        for (k in remember) {
+            val i = low.indexOf(k)
+            if (i >= 0) {
+                // Cut the ORIGINAL text so "৩টায়" keeps its Bengali digit in the stored memory.
+                val rest = raw.substring(i + k.length).trim()
+                return spec(Intent.MEMORY_STORE, 0.95, Slot.TEXT to rest.ifBlank { raw.trim() })
+            }
+        }
+        // --- read aloud ---
+        if (containsAny(low, "পড়ে শোনাও", "পড়ে শোনা", "জোরে পড়", "read aloud", "read it out", "speak it")) {
+            return spec(Intent.SPEAK, 0.95, Slot.TEXT to afterAny(raw, low, "পড়ে শোনাও", "পড়ে শোনা", "জোরে পড়", "read aloud", "read it out", "speak it"))
+        }
+        // --- calls (recognised, executed from v0.9) ---
+        if (containsAny(low, "কেটে দাও", "কেটে দে", "কাটো", "decline", "reject call")) return spec(Intent.CALL_DECLINE, 0.9)
+        if (containsAny(low, "রিং হচ্ছে", "ধরো", "কল ধর", "answer the call", "pick up")) return spec(Intent.CALL_ANSWER, 0.9)
+        if (containsAny(low, "ফোন কর", "ফোন দাও", "কল কর", "call mom", "call ") || low.trim().endsWith("call")) {
+            // Bangla puts the person first: "মাকে ফোন কর" → the name is BEFORE the verb.
+            val after = afterAny(raw, low, "ফোন কর", "ফোন দাও", "কল কর", "call")
+            val who = after.ifBlank { beforeAny(raw, low, "ফোন কর", "ফোন দাও", "কল কর", "call") }
+            return spec(Intent.CALL_PLACE, 0.9, Slot.CONTACT to who)
+        }
+        // --- messages (v0.8) ---
+        if (containsAny(low, "সারমর্ম", "কে কে মেসেজ", "কে মেসেজ দিয়েছে", "মেসেজ দিয়েছে", "summarise", "summarize", "digest")) {
+            return spec(Intent.MSG_DIGEST, 0.9, Slot.QUERY to raw.trim())
+        }
+        // --- media (v0.10) ---
+        if (containsAny(low, "পরের গান", "গান চালাও", "গান বাজাও", "next song", "play music", "pause music", "গান বন্ধ")) {
+            return spec(Intent.MEDIA, 0.9, Slot.QUERY to raw.trim())
+        }
+        // --- app launch ---
+        if (containsAny(low, "খোলো", "খুলে দাও", "খোল ", "ওপেন", "open ", "launch ", "চালু কর")) {
+            val after = afterAny(raw, low, "খোলো", "খুলে দাও", "খোল", "ওপেন", "open", "launch", "চালু কর")
+            val app = cleanAppQuery(after).ifBlank { cleanAppQuery(beforeAny(raw, low, "খোলো", "খুলে দাও", "ওপেন", "open", "launch", "চালু কর")) }
+            return spec(Intent.APP_LAUNCH, 0.9, Slot.APP to app)
+        }
+        // --- explicit "ask the AI" ---
+        if (containsAny(low, "ai কে জিজ্ঞাসা", "এআই কে জিজ্ঞাসা", "ask ai", "ask the ai")) {
+            return spec(Intent.ASK_AI, 0.9, Slot.QUERY to afterAny(raw, low, "ai কে জিজ্ঞাসা", "এআই কে জিজ্ঞাসা", "ask the ai", "ask ai"))
+        }
+        return CommandSpec.unknown(raw)
+    }
+
+    /** True when the offline pass found something worth acting on without the model. */
+    fun confident(spec: CommandSpec): Boolean = spec.intent != Intent.UNKNOWN && spec.confidence >= MIN_CONFIDENCE
+
+    /** Prompt for the model: fixed schema, closed intent list, JSON only. */
+    fun prompt(bengali: Boolean): String = buildString {
+        append("You convert ONE spoken command into JSON. Reply with JSON only, no prose, no markdown fences.\n")
+        append("Schema: {\"intent\":\"<one of the ids>\",\"slots\":{...},\"confidence\":0.0-1.0}\n")
+        append("Allowed intents and slots:\n")
+        for (i in CommandRegistry.entries()) {
+            val meta = CommandRegistry.meta(i)
+            append("- ").append(i.id)
+            if (meta.requiredSlots.isNotEmpty()) append(" (needs: ").append(meta.requiredSlots.joinToString(",") { it.key }).append(")")
+            append(" — ").append(if (bengali) meta.helpBn else meta.helpEn).append('\n')
+        }
+        append("Rule: if the sentence is not clearly one of these, return {\"intent\":\"unknown\",\"confidence\":0}.\n")
+        append("Never invent names, numbers or message text. Copy them from the user's words.\n")
+        append(if (bengali) "The command is usually in Bengali." else "The command may be in Bengali or English.")
+    }
+
+    /** Messages for the model call (kept here so the prompt and the utterance stay together). */
+    fun messages(utterance: String, bengali: Boolean): List<com.voicedock.ai.ai.ChatMessage> =
+        listOf(com.voicedock.ai.ai.ChatMessage.user(utterance.take(1000)))
+
+    // ---------------------------------------------------------------- helpers
+
+    private fun containsAny(low: String, vararg keys: String) = keys.any { low.contains(it) }
+
+    private fun afterAny(text: String, low: String, vararg keys: String): String {
+        var best = -1
+        var keyLen = 0
+        for (k in keys) {
+            val i = low.indexOf(k)
+            if (i >= 0 && (best < 0 || i < best)) { best = i; keyLen = k.length }
+        }
+        return if (best < 0) text else text.substring(best + keyLen).trim()
+    }
+
+    /** Text BEFORE the first matching trigger — Bangla commands put the object first. */
+    private fun beforeAny(text: String, low: String, vararg keys: String): String {
+        var best = -1
+        for (k in keys) {
+            val i = low.indexOf(k)
+            if (i >= 0 && (best < 0 || i < best)) best = i
+        }
+        return if (best <= 0) "" else text.substring(0, best).trim()
+    }
+
+    /** "হোয়াটসঅ্যাপ অ্যাপটা" → "হোয়াটসঅ্যাপ"; quotes and filler words removed. */
+    fun cleanAppQuery(q: String): String = normalize(q)
+        .replace(Regex("(?i)\\b(the|app|application|টা|টি|অ্যাপটা|অ্যাপটি|অ্যাপ|please|একটু|দয়া করে)\\b"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}

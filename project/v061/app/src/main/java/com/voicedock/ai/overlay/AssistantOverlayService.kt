@@ -50,6 +50,20 @@ import com.voicedock.ai.settings.UiLanguage
 import com.voicedock.ai.settings.tr
 import com.voicedock.ai.ui.MainActivity
 import com.voicedock.ai.ai.AiReadinessCore
+import com.voicedock.ai.appc.AppLauncher
+import com.voicedock.ai.command.Choice
+import com.voicedock.ai.command.CommandDecision
+import com.voicedock.ai.command.CommandJson
+import com.voicedock.ai.command.CommandLog
+import com.voicedock.ai.command.CommandParser
+import com.voicedock.ai.command.CommandPipeline
+import com.voicedock.ai.command.CommandRegistry
+import com.voicedock.ai.command.CommandSpec
+import com.voicedock.ai.command.Intent as CmdIntent
+import com.voicedock.ai.command.Slot
+import com.voicedock.ai.memory.MemoryStore
+import com.voicedock.ai.memory.MemoryText
+import com.voicedock.ai.tts.Speaker
 import com.voicedock.ai.text.AiFormatter
 import com.voicedock.ai.text.FormatStyle
 import com.voicedock.ai.vision.ScreenAssistant
@@ -94,6 +108,18 @@ class AssistantOverlayService : LifecycleService() {
     private val _dict = MutableStateFlow(DictationBubbleState())
     /** True once ✨ has replaced the recognised text, so new live text does not overwrite it. */
     private var dictFormatted = false
+
+    // ---- v0.7.0 commands ----
+    private val memory by lazy { MemoryStore(filesDir) }
+    private val commandLog by lazy { CommandLog(filesDir) }
+    private val launcher by lazy { AppLauncher(this) }
+    private val speaker by lazy { Speaker(this) }
+    /** Buttons currently shown in the bubble, and the command waiting for a confirmation. */
+    private var pendingChoices: List<Choice> = emptyList()
+    private var pendingSpec: CommandSpec? = null
+    private var pendingSource: String = ""
+
+
 
     private val _ui = MutableStateFlow(AssistantUiState())
     val ui: StateFlow<AssistantUiState> = _ui.asStateFlow()
@@ -294,6 +320,8 @@ class AssistantOverlayService : LifecycleService() {
                 },
                 onClose = { closeDictBubble() },
                 onOpenSettings = { closeDictBubble(); openSettings() },
+                onCommand = { runCommand(state.liveText) },
+                onChoice = { onChoicePicked(it) },
             )
         }
         val dm = resources.displayMetrics
@@ -326,6 +354,8 @@ class AssistantOverlayService : LifecycleService() {
     /** Close the bubble. The text is never lost: the controller has already saved every sentence. */
     private fun closeDictBubble(stopDictation: Boolean = true) {
         removeDictBubble()
+        pendingChoices = emptyList()
+        pendingSpec = null
         _dict.value = DictationBubbleState()
         if (stopDictation) {
             val d = VoiceDock.dictation(this).ui.value
@@ -437,6 +467,208 @@ class AssistantOverlayService : LifecycleService() {
                     needsSetup = true,
                 )
             }
+        }
+    }
+
+    // ------------------------------------------------------------------ commands (v0.7.0)
+
+    /**
+     * What a long press on ⏎ does: take the sentence that is in the bubble and try to *do* it instead of
+     * inserting it. Offline patterns first (works with no key, no internet, instantly), the model only
+     * when they find nothing.
+     */
+    private fun runCommand(text: String) {
+        val said = text.trim()
+        if (said.isBlank()) { toast(tr("কিছু বলা হয়নি", "Nothing was said")); return }
+        if (!SettingsStore.state.value.commandsEnabled) {
+            _dict.value = _dict.value.copy(note = tr("কমান্ড বন্ধ আছে (সেটিংস → কমান্ড)", "Commands are off (Settings → Commands)"))
+            return
+        }
+        val bn = isBengali()
+        lifecycleScope.launch {
+            var spec = CommandParser.offline(said)
+            var source = "offline"
+            if (!CommandParser.confident(spec) && AiSetup.readiness(this@AssistantOverlayService).ok) {
+                _dict.value = _dict.value.copy(busy = true, busyLabel = tr("বুঝছি…", "Understanding…"), choices = emptyList())
+                val parsed = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val answer = AiSetup.router(this@AssistantOverlayService)
+                            .complete(CommandParser.prompt(bn), CommandParser.messages(said, bn))
+                        CommandJson.parse(answer.text, said)
+                    }.getOrNull()
+                }
+                _dict.value = _dict.value.copy(busy = false, busyLabel = "")
+                if (parsed != null) { spec = parsed; source = "model" }
+            }
+            handleCommand(spec, source)
+        }
+    }
+
+    /** Runs the pure decision layer and shows whatever it asks for. */
+    private fun handleCommand(spec: CommandSpec, source: String) {
+        val bn = isBengali()
+        val candidates: Map<Slot, List<String>> = when {
+            spec.intent == CmdIntent.APP_LAUNCH && spec.slot(Slot.APP).isNullOrBlank() -> emptyMap()
+            spec.intent == CmdIntent.APP_LAUNCH -> {
+                val hits = launcher.resolve(spec.slot(Slot.APP).orEmpty())
+                if (hits.size > 1) mapOf(Slot.APP to hits.map { it.label }) else emptyMap()
+            }
+            else -> emptyMap()
+        }
+        when (val d = CommandPipeline.decide(spec, bn, candidates)) {
+            is CommandDecision.Clarify -> {
+                pendingSpec = null
+                pendingSource = source
+                showChoices(d.question, d.choices, spec, source, ok = true, strategy = "clarify")
+            }
+            is CommandDecision.Confirm -> {
+                pendingSpec = spec
+                pendingSource = source
+                pendingChoices = listOf(d.confirm, d.cancel)
+                _dict.value = _dict.value.copy(
+                    note = d.question, answer = "", providerLabel = "", needsSetup = false,
+                    busy = false, busyLabel = "",
+                    choices = listOf(d.confirm.label, d.cancel.label),
+                )
+                ensureBubbleVisible()
+                commandLog.record(spec.raw, spec.intent, spec.confidence, source, "confirm", true, CommandPipeline.describe(spec, bn))
+            }
+            CommandDecision.Execute -> executeCommand(spec, source)
+        }
+    }
+
+    private fun showChoices(
+        question: String,
+        choices: List<Choice>,
+        spec: CommandSpec,
+        source: String,
+        ok: Boolean,
+        strategy: String,
+    ) {
+        pendingChoices = choices
+        _dict.value = _dict.value.copy(
+            note = question, answer = "", providerLabel = "", needsSetup = false,
+            busy = false, busyLabel = "", choices = choices.map { it.label },
+        )
+        ensureBubbleVisible()
+        commandLog.record(spec.raw, spec.intent, spec.confidence, source, strategy, ok, question)
+    }
+
+    /** A button in a clarification / confirmation card was tapped. */
+    private fun onChoicePicked(index: Int) {
+        val choices = pendingChoices
+        if (index !in choices.indices) { clearChoices(); return }
+        val choice = choices[index]
+        // Confirmation of a pending destructive command.
+        val waiting = pendingSpec
+        if (waiting != null) {
+            clearChoices()
+            if (choice.intent == CmdIntent.UNKNOWN) {
+                _dict.value = _dict.value.copy(note = tr("বাতিল করা হলো", "Cancelled"))
+                commandLog.record(waiting.raw, waiting.intent, waiting.confidence, pendingSource, "confirm", false, "cancelled")
+            } else {
+                executeCommand(waiting.copy(slots = waiting.slots + choice.slots), pendingSource)
+            }
+            return
+        }
+        clearChoices()
+        if (choice.intent == CmdIntent.UNKNOWN) { _dict.value = _dict.value.copy(note = tr("বাতিল", "Cancelled")); return }
+        // A clarified intent usually still needs its slot, so go back through the pipeline.
+        handleCommand(CommandSpec(choice.intent, choice.slots, 1.0, choice.label), "choice")
+    }
+
+    private fun clearChoices() {
+        pendingChoices = emptyList()
+        pendingSpec = null
+        if (_dict.value.choices.isNotEmpty()) _dict.value = _dict.value.copy(choices = emptyList())
+    }
+
+    private fun ensureBubbleVisible() {
+        if (dictView == null) {
+            _dict.value = _dict.value.copy(visible = true)
+            addDictBubble()
+            updateBubble()
+        }
+    }
+
+    /** Actually runs an available, fully-specified command. Every branch logs its strategy. */
+    private fun executeCommand(spec: CommandSpec, source: String) {
+        val bn = isBengali()
+        fun done(text: String, ok: Boolean, strategy: String) {
+            _dict.value = _dict.value.copy(
+                answer = text, note = "", providerLabel = "", needsSetup = false,
+                busy = false, busyLabel = "", choices = emptyList(),
+            )
+            ensureBubbleVisible()
+            commandLog.record(spec.raw, spec.intent, spec.confidence, source, strategy, ok, text)
+        }
+
+        when (spec.intent) {
+            CmdIntent.APP_LAUNCH -> {
+                val query = spec.slot(Slot.APP).orEmpty()
+                val hits = launcher.resolve(query)
+                when {
+                    hits.isEmpty() -> done(
+                        tr("‘$query’ নামে কোনো অ্যাপ পাইনি।", "No app called ‘$query’ was found."), false, "launcher",
+                    )
+                    hits.size > 1 && spec.confidence < 0.99 -> {
+                        pendingChoices = hits.map { Choice(it.label, CmdIntent.APP_LAUNCH, mapOf(Slot.APP to it.label)) }
+                        pendingSpec = null
+                        _dict.value = _dict.value.copy(
+                            note = tr("কোন অ্যাপ?", "Which app?"), choices = pendingChoices.map { it.label }, answer = "",
+                        )
+                        ensureBubbleVisible()
+                        commandLog.record(spec.raw, spec.intent, spec.confidence, source, "clarify", true, "ambiguous app")
+                    }
+                    else -> {
+                        val app = hits.first()
+                        val ok = launcher.launch(app.pkg)
+                        done(
+                            if (ok) tr("${app.label} খোলা হলো ✓", "${app.label} opened ✓")
+                            else tr("${app.label} খোলা যায়নি", "Could not open ${app.label}"),
+                            ok, "launcher",
+                        )
+                    }
+                }
+            }
+
+            CmdIntent.MEMORY_STORE -> {
+                val text = spec.slot(Slot.TEXT).orEmpty()
+                val e = memory.add(text)
+                done(
+                    if (e == null) tr("কিছু মনে রাখা যায়নি", "Nothing to remember")
+                    else MemoryText.storedAnswer(e.text, bn),
+                    e != null, "memory",
+                )
+            }
+
+            CmdIntent.MEMORY_RECALL -> {
+                val entries = memory.all()
+                val found = MemoryText.search(entries, spec.slot(Slot.QUERY) ?: spec.raw)
+                val answer = MemoryText.recallAnswer(found, entries.size, bn)
+                done(answer, true, "memory")
+                if (SettingsStore.state.value.speakResults) speaker.speak(answer, bn)
+            }
+
+            CmdIntent.SPEAK -> {
+                val text = spec.slot(Slot.TEXT).orEmpty()
+                val ok = speaker.speak(text, bn)
+                done(
+                    if (ok) tr("পড়ে শোনানো হচ্ছে…", "Reading it aloud…")
+                    else tr("এই ফোনে টেক্সট-টু-স্পিচ বাংলা চালু নেই — লেখা হিসেবেই দেখানো হলো।", "This phone has no usable speech voice — showing the text instead."),
+                    ok, "tts",
+                )
+            }
+
+            CmdIntent.ASK_AI -> {
+                _dict.value = _dict.value.copy(liveText = spec.slot(Slot.QUERY) ?: spec.raw, choices = emptyList())
+                askDictated()
+                commandLog.record(spec.raw, spec.intent, spec.confidence, source, "ai", true, "")
+            }
+
+            else -> done(
+                tr("এই কমান্ডটি এখনো চালু হয়নি।", "That command is not enabled yet."), false, "none",
+            )
         }
     }
 

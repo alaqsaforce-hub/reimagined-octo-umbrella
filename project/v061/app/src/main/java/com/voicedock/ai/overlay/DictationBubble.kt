@@ -1,6 +1,7 @@
 package com.voicedock.ai.overlay
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
@@ -29,8 +30,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.voicedock.ai.settings.tr
 import com.voicedock.ai.ui.theme.VoiceDockTheme
@@ -55,6 +58,10 @@ fun DictationBubble(
     onCopy: () -> Unit,
     onClose: () -> Unit,
     onOpenSettings: () -> Unit = {},
+    /** v0.7.0 — the ⏎ chip held down means "treat what I said as a command". */
+    onCommand: () -> Unit = {},
+    /** v0.7.0 — a clarification / confirmation button was tapped. */
+    onChoice: (Int) -> Unit = {},
 ) {
     val cfg = LocalConfiguration.current
     val maxWidth = (cfg.screenWidthDp * 0.68f).dp
@@ -130,6 +137,29 @@ fun DictationBubble(
                     )
                 }
 
+                // ---- clarification / confirmation buttons (v0.7.0) ----
+                if (state.choices.isNotEmpty()) {
+                    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                        state.choices.take(4).forEachIndexed { i, label ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                onClick = { onChoice(i) },
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                            ) {
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // ---- three small actions, bottom right ----
                 Row(
                     Modifier.fillMaxWidth().padding(top = 6.dp),
@@ -145,19 +175,27 @@ fun DictationBubble(
                     MiniAction("✨", tr("সাজাও", "Tidy up"), onRephrase, enabled = hasText && !state.busy)
                     MiniAction("💬", tr("জিজ্ঞাসা", "Ask AI"), onAsk, enabled = hasText && !state.busy)
                     Spacer(Modifier.width(2.dp))
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (hasText) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (hasText) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.outline,
-                        onClick = onInsert,
-                        enabled = hasText,
+                    // Tap = insert, long press = run as a command (v0.7.0).
+                    Box(
+                        Modifier.pointerInput(hasText) {
+                            detectTapGestures(
+                                onTap = { if (hasText) onInsert() },
+                                onLongPress = { if (hasText) onCommand() },
+                            )
+                        },
                     ) {
-                        Text(
-                            "⏎",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (hasText) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (hasText) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.outline,
+                        ) {
+                            Text(
+                                "⏎",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            )
+                        }
                     }
                 }
             }
