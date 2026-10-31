@@ -429,3 +429,36 @@ device — a wrong threshold either locks the user out or lets anyone in) and C1
 works today; a trained model is a later optimisation).
 
 **Where the plan stands:** C1–C8, C11–C12, N1–N6 shipped across v0.7–v1.0. Open: C9, C10.
+
+---
+
+## v1.1.0 "always an agent, and it answers out loud" (built & verified 2026-10-31)
+
+Answers four of the five new requests; the fifth (the big integration list) is mapped release by release in
+`ROADMAP-v1.2-to-v1.4.md`.
+
+* **Always an agent, cheap:** `AssistantMode.AGENT` is the default and the wake listener's rhythm is a
+  policy (`DutyPlanner`): continuous while charging, ~0.5 s gap while the screen is on, **9 s gap (~10 % mic
+  time) with the screen off in lean mode**, 1.5 s if lean is off. Settings prints the current rhythm and
+  live `cycles/wakes` counters; the trade-off (up to ~9 s late) is written in the UI.
+* **Speaks when called:** wake → bubble + spoken "বলুন"; results are spoken per mode, never twice, never
+  into a live call.
+* **Four modes:** agent / voice→voice / voice+text / text-only (text-only closes the microphone entirely).
+* **Local models:** Ollama / llama.cpp / LM Studio through the Custom provider, with model/RAM guidance
+  (qwen2.5:1.5b, gemma2:2b, llama3.2:3b).
+* **Provider self-test:** one `/models` call per provider (ChatGPT OAuth, Gemini, OpenRouter, Groq, Mistral,
+  OpenAI, Anthropic, DeepSeek, custom/local) → ✓ working / ✗ failed / ⛔ blocked / ○ not configured.
+* **Permissions with verification:** Settings → সিস্টেম ও এজেন্ট — every capability with a grant button and
+  a **test** that exercises it (accessibility *connected*, stored notifications + media sessions, contacts
+  readable + answer permission, recogniser present, TTS voice, role held, battery exemption).
+* **Skills list:** 24 rows, ✓ shipped / ○ planned with the version.
+
+**Status:** lint **0 errors / 38 warnings**; **377 tests / 0 failures / 48 suites** (18 new);
+APK `versionCode 19 / 1.1.0`, minSdk 26, v2-signed, 16 KB-aligned. Device test pending — 13 checks in
+`MANUAL-TESTS-v0.6.md` § v1.1.0 (8 and 9 are the ones only the phone can answer).
+
+**Note for the next session:** `/opt` is wiped between turns in this sandbox — run
+`bash /home/user/toolchain.sh` (≈20 s) before any build, and expect a cold dependency download if the
+Gradle cache went with it.
+
+**Next:** v1.2.0 — scheduled jobs (reminders + send-later, with a `MIGRATION_3_4`) and YouTube search.

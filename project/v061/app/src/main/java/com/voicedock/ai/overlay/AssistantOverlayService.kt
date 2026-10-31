@@ -56,6 +56,7 @@ import com.voicedock.ai.command.CommandDecision
 import com.voicedock.ai.command.CommandJson
 import com.voicedock.ai.command.CommandLog
 import com.voicedock.ai.command.CommandParser
+import com.voicedock.ai.assistant.AssistantModeCore
 import com.voicedock.ai.command.ChainOutcome
 import com.voicedock.ai.command.ChainResolver
 import com.voicedock.ai.command.CommandPipeline
@@ -177,13 +178,30 @@ class AssistantOverlayService : LifecycleService() {
             // breath ("শাহরুখ, ওয়াটসঅ্যাপ খোলো") it runs immediately instead of waiting for speech.
             ACTION_WAKE -> {
                 addBubble()
+                val mode = SettingsStore.state.value.mode
                 val spoken = intent?.getStringExtra(EXTRA_WAKE_COMMAND).orEmpty().trim()
-                if (spoken.isNotBlank()) {
-                    _dict.value = _dict.value.copy(visible = true, liveText = spoken)
-                    ensureBubbleVisible()
-                    runCommand(spoken)
-                } else {
-                    startDictationHere()
+                when {
+                    // v1.1.0 — text-only mode must not open the microphone, whatever woke the bubble.
+                    !AssistantModeCore.acceptsVoice(mode) -> {
+                        _dict.value = _dict.value.copy(
+                            visible = true,
+                            note = tr(
+                                "শুধু লেখা মোড — মাইক বন্ধ। লিখে কমান্ড দিন (সেটিংস → মোড)।",
+                                "Text-only mode — the microphone stays closed. Type the command (Settings → Mode).",
+                            ),
+                        )
+                        ensureBubbleVisible()
+                    }
+                    spoken.isNotBlank() -> {
+                        _dict.value = _dict.value.copy(visible = true, liveText = spoken)
+                        ensureBubbleVisible()
+                        runCommand(spoken)
+                    }
+                    else -> {
+                        // "শাহরুখ" → it answers out loud, then listens.
+                        if (AssistantModeCore.greetsAloud(mode)) speakGreeting()
+                        startDictationHere()
+                    }
                 }
             }
             else -> addBubble()
@@ -309,6 +327,13 @@ class AssistantOverlayService : LifecycleService() {
     }
 
     private fun startDictationHere() {
+        if (!AssistantModeCore.acceptsVoice(SettingsStore.state.value.mode)) {
+            _dict.value = _dict.value.copy(
+                note = tr("শুধু লেখা মোড — মাইক চালু হবে না।", "Text-only mode — the microphone stays off."),
+            )
+            ensureBubbleVisible()
+            return
+        }
         if (!Permissions.mic(this)) {
             toast(tr("মাইক্রোফোনের অনুমতি দিন", "Grant microphone permission"))
             openSettings()
@@ -764,6 +789,7 @@ class AssistantOverlayService : LifecycleService() {
     private fun executeCommand(spec: CommandSpec, source: String) {
         val bn = isBengali()
         fun done(text: String, ok: Boolean, strategy: String) {
+            autoSpeak(spec, text, ok)
             _dict.value = _dict.value.copy(
                 answer = text, note = "", providerLabel = "", needsSetup = false,
                 busy = false, busyLabel = "", choices = emptyList(), undoLabel = "",
@@ -991,6 +1017,37 @@ class AssistantOverlayService : LifecycleService() {
                 tr("এই কমান্ডটি এখনো চালু হয়নি।", "That command is not enabled yet."), false, "none",
             )
         }
+    }
+
+    // ------------------------------------------------------------------ voice out (v1.1.0)
+
+    /**
+     * A one-word greeting after the wake word, so the assistant *answers* instead of staying silent.
+     * Deliberately short: it must not talk over the user starting to speak.
+     */
+    private fun speakGreeting() {
+        val bn = isBengali()
+        if (!AssistantModeCore.greetsAloud(SettingsStore.state.value.mode)) return
+        if (!SettingsStore.state.value.speakResults) return
+        runCatching { speaker.speak(tr("বলুন", "Yes?"), bn) }
+    }
+
+    /**
+     * Reads a command result aloud when the mode allows it. Two reasons to stay quiet:
+     *  * the intent already speaks for itself ([CmdIntent.SPEAK], recall, digest, read-aloud) — otherwise
+     *    the same sentence would be heard twice;
+     *  * calls: never speak into a live call.
+     */
+    private fun autoSpeak(spec: CommandSpec, text: String, ok: Boolean) {
+        if (!ok || text.isBlank()) return
+        val s = SettingsStore.state.value
+        if (!AssistantModeCore.speaksResults(s.mode, s.speakResults)) return
+        when (spec.intent) {
+            CmdIntent.SPEAK, CmdIntent.MEMORY_RECALL, CmdIntent.MSG_DIGEST, CmdIntent.MSG_READ -> return
+            CmdIntent.CALL_PLACE, CmdIntent.CALL_ANSWER, CmdIntent.CALL_DECLINE -> return
+            else -> Unit
+        }
+        runCatching { speaker.speak(text, isBengali()) }
     }
 
     // ------------------------------------------------------------------ undo (v0.10.0)

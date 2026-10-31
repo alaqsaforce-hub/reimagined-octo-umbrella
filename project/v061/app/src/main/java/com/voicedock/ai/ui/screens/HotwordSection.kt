@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -28,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.voicedock.ai.assistant.AssistantModeCore
+import com.voicedock.ai.hotword.DutyPlanner
 import com.voicedock.ai.hotword.HotwordGate
 import com.voicedock.ai.hotword.HotwordService
 import com.voicedock.ai.hotword.WakePhrase
@@ -53,6 +56,9 @@ fun HotwordSection(resumeTick: Int) {
     val running = remember(tick, resumeTick) { HotwordService.listening }
     val screenOn = remember(tick, resumeTick) {
         runCatching { (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive ?: true }.getOrDefault(true)
+    }
+    val charging = remember(tick, resumeTick) {
+        runCatching { (ctx.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager)?.isCharging ?: false }.getOrDefault(false)
     }
     val batteryExempt = remember(tick, resumeTick) {
         runCatching { (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isIgnoringBatteryOptimizations(ctx.packageName) ?: false }.getOrDefault(false)
@@ -124,6 +130,44 @@ fun HotwordSection(resumeTick: Int) {
         ),
         style = MaterialTheme.typography.labelSmall,
     )
+    // v1.1.0 — the whole battery story in one line: the listening rhythm this phone will actually use.
+    val duty = DutyPlanner.plan(screenOn, charging, s.hotwordAlwaysOn, s.hotwordLean)
+    Text(
+        (if (bn) duty.labelBn else duty.labelEn),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.primary,
+    )
+    if (HotwordService.listening) {
+        Text(
+            tr(
+                "পরিসংখ্যান: ${HotwordService.cycles} বার শুনেছে · ${HotwordService.wakes} বার ডাক ধরা পড়েছে",
+                "Stats: ${HotwordService.cycles} listen cycles · ${HotwordService.wakes} wake hits",
+            ),
+            style = MaterialTheme.typography.labelSmall,
+        )
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(tr("ব্যাটারি বাঁচাতে থেমে থেমে শুনুক", "Duty-cycle to save battery"), Modifier.weight(1f))
+        Switch(
+            checked = s.hotwordLean,
+            onCheckedChange = { v -> SettingsStore.update { it.copy(hotwordLean = v) }; tick++ },
+        )
+    }
+    Text(
+        tr(
+            "চালু থাকলে স্ক্রিন বন্ধ অবস্থায় প্রায় ১০ সেকেন্ডে একবার শোনে (মাইক ~১০% সময় খোলা) — ডাক দিলে উত্তর দিতে কয়েক সেকেন্ড দেরি হতে পারে। চার্জে থাকলে বা স্ক্রিন জ্বললে পুরো সময় শোনে।",
+            "When on, with the screen off it listens roughly once every 10 s (the mic is open ~10% of the time) — a wake word can take a few seconds longer to answer. While charging or with the screen on it listens continuously.",
+        ),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.outline,
+    )
+    if (!AssistantModeCore.acceptsVoice(s.mode)) {
+        Text(
+            tr("⚠ মোড ‘শুধু লেখা’ — মাইক খুলবে না। সেটিংস → মোড থেকে বদলান।", "⚠ Mode is ‘Text only’ — the microphone stays closed. Change it in Settings → Mode."),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
     if (s.hotwordAlwaysOn && !batteryExempt) {
         Row(Modifier.fillMaxWidth()) {
             TextButton(onClick = {

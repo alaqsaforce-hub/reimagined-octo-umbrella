@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -83,6 +84,22 @@ class HotwordService : LifecycleService() {
         pm?.isInteractive ?: true
     }.getOrDefault(true)
 
+    /** Charging? The duty plan listens continuously when it is — there is nothing to save. */
+    private fun charging(): Boolean = runCatching {
+        (getSystemService(Context.BATTERY_SERVICE) as? BatteryManager)?.isCharging ?: false
+    }.getOrDefault(false)
+
+    /** The current listening rhythm (pure policy in [DutyPlanner]). */
+    private fun duty(): Duty {
+        val s = SettingsStore.state.value
+        return DutyPlanner.plan(
+            screenOn = screenOn(),
+            charging = charging(),
+            alwaysOn = s.hotwordAlwaysOn,
+            lean = s.hotwordLean,
+        )
+    }
+
     private fun dictationBusy(): Boolean = runCatching {
         HotwordGate.dictationBusy(VoiceDock.dictation(this).ui.value.phase?.name)
     }.getOrDefault(false)
@@ -112,12 +129,14 @@ class HotwordService : LifecycleService() {
 
     private fun startCycle() {
         if (!running || paused) return
+        val duty = duty()
         updateNotification(statusLine())
         if (!mayListen()) {
             // Idle check: cheap, and it makes the screen-off / setting-off cases recover by themselves.
-            schedule(if (screenOn()) 2_000L else 5_000L)
+            schedule(duty.idleMs)
             return
         }
+        cycles++
         val r = recognizer ?: createRecognizer()?.also { recognizer = it }
         if (r == null) {                                    // no recogniser on this phone
             schedule(HotwordGate.backoffMs(++failures))
@@ -180,7 +199,8 @@ class HotwordService : LifecycleService() {
         override fun onResults(results: Bundle?) {
             if (check(results)) return
             failures = 0
-            schedule(RESTART_MS)
+            // The gap between cycles is the whole battery story: see [DutyPlanner].
+            schedule(duty().idleMs)
         }
 
         override fun onError(error: Int) {
@@ -214,6 +234,7 @@ class HotwordService : LifecycleService() {
     private fun onWake(remainder: String) {
         paused = true
         failures = 0
+        wakes++
         // Release the microphone FIRST: the assistant is about to open it for dictation.
         stopRecognizer()
         buzz()
@@ -333,6 +354,9 @@ class HotwordService : LifecycleService() {
 
         /** True while the foreground service is actually running (read by the settings screen). */
         @Volatile var listening = false
+        /** v1.1.0 diagnostics for the settings screen: listen cycles started / wake words heard. */
+        @Volatile var cycles = 0
+        @Volatile var wakes = 0
 
         /** Call from a visible screen (Android 14 background-start rules for microphone services). */
         fun start(ctx: Context) {

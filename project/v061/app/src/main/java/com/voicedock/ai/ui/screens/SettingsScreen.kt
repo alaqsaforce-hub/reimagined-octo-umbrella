@@ -22,6 +22,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.voicedock.ai.assistant.AssistantMode
+import com.voicedock.ai.assistant.AssistantModeCore
 import com.voicedock.ai.settings.SettingsStore
 import com.voicedock.ai.settings.SpeechLanguage
 import com.voicedock.ai.settings.ThemeMode
@@ -41,7 +43,22 @@ fun SettingsScreen(
     openOnboarding: () -> Unit = {},
 ) {
     val s by SettingsStore.state.collectAsState()
+    val bnUi = s.uiLanguage == UiLanguage.BN
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // v1.1.0 — one switch that decides voice/text/agent behaviour everywhere else.
+        Section(tr("মোড", "Mode"))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            AssistantMode.entries.forEach { m ->
+                FilterChip(
+                    selected = s.mode == m,
+                    onClick = { SettingsStore.update { it.copy(mode = m) } },
+                    label = { Text(tr(m.titleBn, m.titleEn)) },
+                )
+            }
+        }
+        Text(AssistantModeCore.describe(s.mode, bnUi), style = MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
+
         Section(tr("ডিক্টেশনের ভাষা", "Dictation language"))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             SpeechLanguage.entries.forEach { l ->
@@ -54,6 +71,7 @@ fun SettingsScreen(
 
         AssistantSettingsSection(resumeTick)
         HotwordSection(resumeTick)
+        SystemControlSection(resumeTick)
         HorizontalDivider()
         Section(tr("শুরুর গাইড", "Getting started"))
         Text(

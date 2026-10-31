@@ -146,6 +146,17 @@ object MediaControl {
 
     fun hasAccess(ctx: Context): Boolean = com.voicedock.ai.notify.NotificationAccess.isGranted(ctx)
 
+    /**
+     * Non-destructive probe for the "test" button in Settings: how many players respond right now.
+     * Returns -1 when the access is missing, so the UI can tell "none playing" from "not allowed".
+     */
+    fun sessionCount(ctx: Context): Int {
+        if (!hasAccess(ctx)) return -1
+        val mgr = ctx.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager ?: return -1
+        val listener = ComponentName(ctx, VoiceDockNotificationListener::class.java)
+        return runCatching { mgr.getActiveSessions(listener).size }.getOrDefault(-1)
+    }
+
     fun perform(ctx: Context, action: MediaAction): MediaOutcome {
         if (!hasAccess(ctx)) return MediaOutcome(false, MediaStrategy.NONE, "no_access")
         val mgr = ctx.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager

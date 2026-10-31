@@ -208,3 +208,36 @@ Setup: floating icon visible, Accessibility on, anything else open (e.g. the hom
 **Upgrade**
 10. Install over v0.10.0 without uninstalling: memories, notification log, commands and settings must all
     still be there, and the wake word must default to **off**.
+
+---
+
+## v1.1.0 — modes, voice out, battery-lean always-on, provider test, permission verification
+
+**Modes**
+1. Settings → মোড → **শুধু লেখা** → tap the bubble: the mic must **not** open and the note must say why.
+   Say "শাহরুখ" (hotword on) → bubble opens, **no** microphone. Switch back to এজেন্ট.
+2. **ভয়েস → ভয়েস**: say "শাহরুখ" → hear a short "বলুন" → say "আজ কত তারিখ" → the answer is **spoken**.
+3. **ভয়েস + লেখা**: same command → the answer is both written and read aloud.
+4. Turn off "উত্তর জোরে পড়ে শোনাও" in any voice mode → the answer must stay silent (the switch wins).
+
+**Battery-lean listening**
+5. Hotword on, screen off, always-on **off** → notification says "স্ক্রিন বন্ধ — থেমে আছে"; screen on → resumes.
+6. Always-on on + "ব্যাটারি বাঁচাতে থেমে থেমে শুনুক" on → screen off, wait a minute → Settings shows the
+   duty line "প্রায় ১০ সেকেন্ডে একবার" and the counters increase slowly (not dozens per minute).
+7. Same, with the phone **charging** → the duty line switches to "পুরো সময় শুনছে" and counters run fast.
+8. Note the battery drain over an hour in the background for both settings — this is the number only your
+   phone can give.
+
+**Permissions verified, not assumed**
+9. Settings → সিস্টেম ও এজেন্ট → press **টেস্ট** on every row. Each must answer with ✓ or a specific ✗;
+   a row that says "✓" while the feature does not work is a bug worth reporting.
+10. Accessibility row: it must say "✓ সংযুক্ত" only when the service is genuinely connected.
+
+**AI providers**
+11. Press "সব প্রোভাইডার টেস্ট করো" → ChatGPT (signed in), Gemini, OpenRouter etc. must each show
+    ✓/✗/⛔/○ with a real reason. A wrong key must show ✗ with the provider's message, not ✓.
+12. With local-only mode on, a cloud provider must show ⛔ blocked (not ✓).
+
+**Local model (optional)**
+13. Run `ollama run qwen2.5:1.5b` on a computer in the same Wi-Fi → Settings → AI → Custom →
+    `http://192.168.x.x:11434/v1` → the provider test must show ✓ and "ask the AI" must answer offline.

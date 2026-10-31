@@ -1,6 +1,7 @@
 package com.voicedock.ai.settings
 
 import android.content.Context
+import com.voicedock.ai.assistant.AssistantMode
 import com.voicedock.ai.voice.SessionConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -105,6 +106,12 @@ data class AppSettings(
     val speakResults: Boolean = true,
     /** Opt-in local crash reports: enabled by default only in debug builds. */
     val crashLoggingEnabled: Boolean = com.voicedock.ai.BuildConfig.DEBUG,
+
+    // ---- v1.1.0 modes: agent / voice-to-voice / voice+text / text-only ----
+    /** AGENT by default, as asked: the assistant stays ready, speaks, and may run a plan. */
+    val mode: AssistantMode = AssistantMode.AGENT,
+    /** Duty-cycle the wake listener when the screen is off: less battery, up to ~9 s slower to answer. */
+    val hotwordLean: Boolean = true,
 
     // ---- v1.0.0 hotword ----
     /** Wake word "শাহরুখ" — OFF by default: an always-available microphone is the user's decision. */
