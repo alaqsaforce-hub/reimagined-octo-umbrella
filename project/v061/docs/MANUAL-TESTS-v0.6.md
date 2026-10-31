@@ -139,3 +139,18 @@ Setup: floating icon visible, Accessibility on, anything else open (e.g. the hom
    "পাঠানো হয়েছে ✓". WhatsApp must not have been opened by VoiceDock.
 6. Dictate "শেষ ৫টা মেসেজ পড়ো" → the last five are read aloud (or shown if the phone has no Bangla voice).
 7. Settings → **"সংরক্ষিত সব মুছুন"** → the stored count returns to 0.
+
+---
+
+## v0.9.0 — calls
+
+1. Settings → কমান্ড → **কল** → "অনুমতি দিন" → grant all four → the row must read "✓ সব দেওয়া আছে".
+2. "মাকে ফোন দাও" → confirmation card showing the **name and the number** → tap বাতিল: nothing dials.
+3. Repeat, tap "হ্যাঁ" → the call is placed; the bubble says "…কল করা হচ্ছে ✓"; Settings → কমান্ড log
+   shows `place:telecom` (or `place:dialer_opened` if CALL_PHONE was refused).
+4. Get an incoming call → "ধরো" → answered. Note the strategy in the log: `answer:telecom` or
+   `answer:notification_action`.
+5. While ringing: "কেটে দাও" → confirmation → declined.
+6. **WhatsApp call** → "ধরো" → either answered via the notification button (`notification_action`) or the
+   bubble says honestly that it could not — both are correct outcomes; a silent failure is not.
+7. Say a number: "০১৭xxxxxxx নম্বরে ফোন কর" → confirm card must show the digits (Bengali digits mapped).

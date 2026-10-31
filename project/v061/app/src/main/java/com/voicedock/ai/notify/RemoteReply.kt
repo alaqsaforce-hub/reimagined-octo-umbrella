@@ -42,6 +42,10 @@ object RemoteReply {
     @Synchronized
     fun get(key: String): StatusBarNotification? = live[key]
 
+    /** Snapshot of the live notifications (newest last) — used by the call-answer fallback. */
+    @Synchronized
+    fun liveAll(): List<StatusBarNotification> = live.values.toList()
+
     /** Newest live notification from [pkg] whose sender matches, preferring ones that can reply. */
     @Synchronized
     fun find(sender: String, pkg: String? = null): StatusBarNotification? {

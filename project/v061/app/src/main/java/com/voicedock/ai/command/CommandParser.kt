@@ -91,8 +91,12 @@ object CommandParser {
             return spec(Intent.MSG_READ, 0.9, Slot.QUERY to raw.trim())
         }
         // --- calls (recognised, executed from v0.9) ---
-        if (containsAny(low, "কেটে দাও", "কেটে দে", "কাটো", "decline", "reject call")) return spec(Intent.CALL_DECLINE, 0.9)
-        if (containsAny(low, "রিং হচ্ছে", "ধরো", "কল ধর", "answer the call", "pick up")) return spec(Intent.CALL_ANSWER, 0.9)
+        if (containsAny(low, "কেটে দাও", "কেটে দে", "কাটো", "কল কাট", "decline", "reject call", "reject the call")) {
+            return spec(Intent.CALL_DECLINE, 0.9)
+        }
+        if (containsAny(low, "রিং হচ্ছে", "ধরো", "কল ধর", "ফোন ধর", "answer the call", "answer it", "pick up", "receive the call")) {
+            return spec(Intent.CALL_ANSWER, 0.9)
+        }
         if (containsAny(low, "ফোন কর", "ফোন দাও", "কল কর", "call mom", "call ") || low.trim().endsWith("call")) {
             // Bangla puts the person first: "মাকে ফোন কর" → the name is BEFORE the verb.
             val after = afterAny(raw, low, "ফোন কর", "ফোন দাও", "কল কর", "call")

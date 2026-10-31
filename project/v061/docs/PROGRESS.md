@@ -347,3 +347,28 @@ containing "ফোন কর", and a `NewApi` lint error (`Notification.Action.g
 **Next:** v0.9.0 — calls: `CallController` (place/answer/end with a strategy chain), WhatsApp call
 via notification actions, contact resolution, `CALL_PHONE` / `ANSWER_PHONE_CALLS` / `READ_CONTACTS`,
 and the Room migration that finally moves memory + the notification log out of JSON files.
+
+---
+
+## v0.9.0 "handles my calls" — Phase 3 of the Jarvis plan (built & verified 2026-10-31)
+
+Calling is real: `call.place` resolves a contact (or a spoken number) and shows name + number before
+dialling; `call.answer` answers immediately (no card — it would outlive the ring); `call.decline`
+confirms first. The answer chain is explicit and reported: `TelecomManager.acceptRingingCall()` →
+the ringing notification's own Answer button (the only route that works for WhatsApp/Telegram calls) →
+an honest failure. Without CALL_PHONE the dialer opens prefilled instead of failing silently. Four
+runtime permissions requested only from Settings → কমান্ড → কল, plus an optional default-dialer role.
+
+**Status:** lint **0 errors / 30 warnings**; **306 tests / 0 failures / 42 suites** (17 new in
+`CallLayerTest`); APK `versionCode 16 / 0.9.0`, minSdk 26, v2-signed, 16 KB-aligned.
+Device test pending — 7 checks in `MANUAL-TESTS-v0.6.md` § v0.9.0.
+
+**Lint/build fixes made during this phase:** `MissingPermission` on `acceptRingingCall`/`endCall`
+(inline check + documented `@SuppressLint`), `endCall` is API 28+ (guarded for minSdk 26), and
+`PermissionImpliesUnsupportedChromeOsHardware` (added `<uses-feature telephony required="false">`).
+
+**Room migration deliberately NOT done** — see `V0.9.0-CHANGES.md`: an untested schema migration on an
+existing install risks the user's drafts. It moves to v0.10 with a tested `Migration`.
+
+**Next:** v0.10.0 — media control over the active `MediaSession`, `ROLE_ASSISTANT` (long-press home),
+command chains ("call the last person who messaged me"), undo on result cards, and the Room migration.

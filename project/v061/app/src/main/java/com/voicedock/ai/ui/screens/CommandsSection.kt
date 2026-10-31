@@ -10,6 +10,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -22,6 +24,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.voicedock.ai.command.CommandLog
 import com.voicedock.ai.memory.MemoryStore
+import android.Manifest
+import android.app.role.RoleManager
+import android.content.Intent
+import android.os.Build
+import androidx.core.content.ContextCompat
 import com.voicedock.ai.notify.NotificationAccess
 import com.voicedock.ai.notify.NotifStore
 import com.voicedock.ai.settings.SettingsStore
@@ -76,6 +83,51 @@ fun CommandsSection() {
             "Not enabled yet (later versions): calls (v0.9), media (v0.10). Those are recognised and explained instead of being faked.",
         ),
         style = MaterialTheme.typography.bodySmall,
+    )
+
+    // ---- v0.9.0 calls ----
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { tick++ }
+    val callPerms = listOf(
+        Manifest.permission.CALL_PHONE,
+        Manifest.permission.ANSWER_PHONE_CALLS,
+        Manifest.permission.READ_PHONE_STATE,
+        Manifest.permission.READ_CONTACTS,
+    )
+    val missing = remember(tick) {
+        callPerms.filter { ContextCompat.checkSelfPermission(ctx, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }
+    }
+    HorizontalDivider(Modifier.padding(top = 8.dp))
+    Text(tr("কল", "Calls"), style = MaterialTheme.typography.titleSmall)
+    Text(
+        tr(
+            if (missing.isEmpty()) "কলের অনুমতি: ✓ সব দেওয়া আছে"
+            else "কলের অনুমতি: ${missing.size} টি বাকি — ফোন করা/ধরা/কাটা কাজ করবে না।",
+            if (missing.isEmpty()) "Call permissions: ✓ all granted"
+            else "Call permissions: ${missing.size} missing — placing/answering/declining will not work.",
+        ),
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Row(Modifier.fillMaxWidth()) {
+        TextButton(onClick = { permLauncher.launch(missing.ifEmpty { callPerms }.toTypedArray()) }) {
+            Text(tr("অনুমতি দিন", "Grant permissions"))
+        }
+        if (Build.VERSION.SDK_INT >= 29) {
+            TextButton(onClick = {
+                runCatching {
+                    val rm = ctx.getSystemService(RoleManager::class.java)
+                    if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_DIALER) && !rm.isRoleHeld(RoleManager.ROLE_DIALER)) {
+                        ctx.startActivity(rm.createRequestRoleIntent(RoleManager.ROLE_DIALER))
+                    }
+                }
+            }) { Text(tr("ডিফল্ট ডায়ালার (ঐচ্ছিক)", "Default dialer (optional)")) }
+        }
+    }
+    Text(
+        tr(
+            "কল ধরা: প্রথমে সিস্টেম API, না পারলে রিং হওয়া নোটিফিকেশনের ‘উত্তর’ বাটন (হোয়াটসঅ্যাপ কলেও এটি কাজ করে), তা না পারলে সৎভাবে ব্যর্থ হয় — ভুয়া ‘হয়ে গেছে’ বলে না।",
+            "Answering order: system API → the ringing notification's own Answer button (this is also how WhatsApp calls work) → an honest failure. It never claims a success it did not have.",
+        ),
+        style = MaterialTheme.typography.labelSmall,
     )
 
     // ---- v0.8.0 notification access ----

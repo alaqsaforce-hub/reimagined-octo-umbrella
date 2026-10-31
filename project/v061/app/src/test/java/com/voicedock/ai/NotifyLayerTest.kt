@@ -195,7 +195,7 @@ class NotifyLayerTest {
         assertTrue(com.voicedock.ai.command.CommandRegistry.isAvailable(Intent.MSG_READ))
         assertTrue(com.voicedock.ai.command.CommandRegistry.isAvailable(Intent.MSG_REPLY))
         assertTrue(com.voicedock.ai.command.CommandRegistry.isDestructive(Intent.MSG_REPLY))
-        assertFalse(com.voicedock.ai.command.CommandRegistry.isAvailable(Intent.CALL_PLACE))
+        assertTrue(com.voicedock.ai.command.CommandRegistry.isAvailable(Intent.CALL_PLACE)) // v0.9.0
     }
 
     @Test

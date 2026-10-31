@@ -34,8 +34,8 @@ android {
         // runtime (screen capture needs 34+, on-device recognisers 31+, FGS types 34+).
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.8.0"
+        versionCode = 16
+        versionName = "0.9.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Offline Whisper (whisper.cpp) is built for 64-bit ARM only — practically every phone from the last years.
         ndk { abiFilters += listOf("arm64-v8a") }

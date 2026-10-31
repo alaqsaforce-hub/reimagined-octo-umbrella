@@ -23,9 +23,11 @@ object CommandRegistry {
         Intent.SPEAK to IntentMeta(setOf(Slot.TEXT), false, true, "জোরে পড়ে শোনানো", "Read aloud"),
         Intent.ASK_AI to IntentMeta(emptySet(), false, true, "AI-কে জিজ্ঞাসা", "Ask the AI"),
         // Recognised now, executed later — the pipeline explains instead of failing silently.
-        Intent.CALL_PLACE to IntentMeta(setOf(Slot.CONTACT), true, false, "ফোন করা (v0.9.0)", "Place a call (v0.9.0)"),
-        Intent.CALL_ANSWER to IntentMeta(emptySet(), true, false, "কল ধরা (v0.9.0)", "Answer a call (v0.9.0)"),
-        Intent.CALL_DECLINE to IntentMeta(emptySet(), true, false, "কল কাটা (v0.9.0)", "Decline a call (v0.9.0)"),
+        // v0.9.0: placing and declining confirm; answering does not (it is not destructive and it is
+        // time-critical — a confirmation card would outlive the ring).
+        Intent.CALL_PLACE to IntentMeta(setOf(Slot.CONTACT), true, true, "ফোন করা", "Place a call"),
+        Intent.CALL_ANSWER to IntentMeta(emptySet(), false, true, "কল ধরা", "Answer a call"),
+        Intent.CALL_DECLINE to IntentMeta(emptySet(), true, true, "কল কাটা", "Decline a call"),
         Intent.MSG_DIGEST to IntentMeta(emptySet(), false, true, "আজকের মেসেজের সারমর্ম", "Today's messages at a glance"),
         Intent.MSG_REPLY to IntentMeta(setOf(Slot.CONTACT, Slot.TEXT), true, true, "মেসেজে উত্তর পাঠানো", "Reply to a message"),
         Intent.MSG_READ to IntentMeta(emptySet(), false, true, "মেসেজ জোরে পড়া", "Read messages aloud"),

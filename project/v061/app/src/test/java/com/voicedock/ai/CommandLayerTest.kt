@@ -107,7 +107,8 @@ class CommandLayerTest {
         assertTrue(call.slot(Slot.CONTACT)!!.contains("মাকে"))
         assertEquals(Intent.CALL_DECLINE, CommandParser.offline("কেটে দাও").intent)
         assertEquals(Intent.CALL_ANSWER, CommandParser.offline("রিং হচ্ছে ধরো").intent)
-        assertFalse(CommandRegistry.isAvailable(call.intent))
+        // v0.9.0 made the call intents available; v0.10 media is still the honest-refusal example.
+        assertTrue(CommandRegistry.isAvailable(call.intent))
     }
 
     @Test
@@ -149,10 +150,10 @@ class CommandLayerTest {
 
     @Test
     fun `a later-phase command explains which version will do it`() {
-        val d = CommandPipeline.decide(CommandSpec.of(Intent.CALL_PLACE, "call mom", 0.95, Slot.CONTACT to "মা"), bengali = false)
+        val d = CommandPipeline.decide(CommandSpec.of(Intent.MEDIA, "play music", 0.95, Slot.QUERY to "next"), bengali = false)
         assertTrue(d is CommandDecision.Clarify)
         val c = d as CommandDecision.Clarify
-        assertTrue(c.question.contains("v0.9"))
+        assertTrue(c.question.contains("v0.10"))
         assertTrue(c.choices.any { it.intent == Intent.ASK_AI })
         assertTrue(c.choices.any { it.intent == Intent.UNKNOWN })
     }

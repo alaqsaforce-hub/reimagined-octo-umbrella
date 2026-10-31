@@ -63,6 +63,11 @@ import com.voicedock.ai.command.Intent as CmdIntent
 import com.voicedock.ai.command.Slot
 import com.voicedock.ai.memory.MemoryStore
 import com.voicedock.ai.notify.Digest
+import com.voicedock.ai.telecom.CallController
+import com.voicedock.ai.telecom.CallStrategy
+import com.voicedock.ai.telecom.ContactEntry
+import com.voicedock.ai.telecom.ContactMatch
+import com.voicedock.ai.telecom.ContactResolver
 import com.voicedock.ai.notify.NotifStore
 import com.voicedock.ai.notify.NotificationAccess
 import com.voicedock.ai.notify.RemoteReply
@@ -119,6 +124,8 @@ class AssistantOverlayService : LifecycleService() {
     private val commandLog by lazy { CommandLog(filesDir) }
     private val launcher by lazy { AppLauncher(this) }
     private val notifStore by lazy { NotifStore(filesDir) }
+    private val calls by lazy { CallController(this) }
+    private val contacts by lazy { ContactResolver(this) }
     private val speaker by lazy { Speaker(this) }
     /** Buttons currently shown in the bubble, and the command waiting for a confirmation. */
     private var pendingChoices: List<Choice> = emptyList()
@@ -514,6 +521,49 @@ class AssistantOverlayService : LifecycleService() {
     private fun handleCommand(specIn: CommandSpec, source: String) {
         var spec = specIn
         val bn = isBengali()
+        // v0.9: a call needs a real number — resolve the contact before the confirmation card so the card
+        // shows the name AND the number that will be dialled.
+        if (spec.intent == CmdIntent.CALL_PLACE) {
+            val q = spec.slot(Slot.CONTACT).orEmpty()
+            val number = ContactMatch.sanitizeNumber(q)
+            if (number != null) {
+                spec = spec.copy(slots = spec.slots + (Slot.CONTACT to number))
+            } else {
+                if (!Permissions.contacts(this)) {
+                    _dict.value = _dict.value.copy(
+                        note = tr(
+                            "কন্টাক্ট পড়ার অনুমতি নেই — সেটিংস → কমান্ডে ‘ফোন/কল’ অনুমতি দিন, অথবা নম্বরটাই বলুন।",
+                            "No contacts permission — grant it in Settings → Commands, or say the number itself.",
+                        ),
+                        needsSetup = true, choices = emptyList(), answer = "",
+                    )
+                    ensureBubbleVisible()
+                    commandLog.record(spec.raw, spec.intent, spec.confidence, source, "blocked", false, "no contacts permission")
+                    return
+                }
+                val hits = contacts.resolve(q)
+                when {
+                    hits.isEmpty() -> {
+                        _dict.value = _dict.value.copy(
+                            note = tr("‘$q’ নামে কোনো কন্টাক্ট পাইনি।", "No contact called ‘$q’ was found."),
+                            choices = emptyList(), answer = "",
+                        )
+                        ensureBubbleVisible()
+                        commandLog.record(spec.raw, spec.intent, spec.confidence, source, "none", false, "no contact")
+                        return
+                    }
+                    hits.size > 1 -> {
+                        showChoices(
+                            tr("কোন নম্বরে ফোন করবো?", "Which number?"),
+                            hits.take(4).map { Choice(it.display, CmdIntent.CALL_PLACE, mapOf(Slot.CONTACT to it.number)) },
+                            spec, source, ok = true, strategy = "clarify",
+                        )
+                        return
+                    }
+                    else -> spec = spec.copy(slots = spec.slots + (Slot.CONTACT to hits.first().number))
+                }
+            }
+        }
         // v0.8: a reply needs a real sender from today's notifications — resolve it before confirming.
         if (spec.intent == CmdIntent.MSG_REPLY) {
             if (!NotificationAccess.isGranted(this)) {
@@ -711,6 +761,51 @@ class AssistantOverlayService : LifecycleService() {
                     else tr("এই ফোনে টেক্সট-টু-স্পিচ বাংলা চালু নেই — লেখা হিসেবেই দেখানো হলো।", "This phone has no usable speech voice — showing the text instead."),
                     ok, "tts",
                 )
+            }
+
+            CmdIntent.CALL_PLACE -> {
+                val number = spec.slot(Slot.CONTACT).orEmpty()
+                val out = calls.place(number)
+                done(
+                    when {
+                        out.ok && out.strategy == CallStrategy.TELECOM -> tr("$number নম্বরে কল করা হচ্ছে ✓", "Calling $number ✓")
+                        out.ok && out.strategy == CallStrategy.DIALER_OPENED ->
+                            tr("কল করার অনুমতি নেই — ডায়ালারে $number বসানো হয়েছে, আপনি চাপ দিন।", "No call permission — the dialer is open with $number filled in.")
+                        else -> tr("কল করা যায়নি (অনুমতি বা সিস্টেম বাধা)।", "Could not place the call (permission or system block).")
+                    },
+                    out.ok, "place:${out.strategy.name.lowercase()}",
+                )
+                if (!out.ok) _dict.value = _dict.value.copy(needsSetup = true)
+            }
+
+            CmdIntent.CALL_ANSWER -> {
+                val out = calls.answer()
+                done(
+                    when {
+                        out.ok && out.strategy == CallStrategy.TELECOM -> tr("কল ধরা হয়েছে ✓", "Call answered ✓")
+                        out.ok -> tr("কল ধরা হয়েছে ✓ (${out.detail})", "Call answered ✓ (${out.detail})")
+                        !calls.canAnswer() -> tr(
+                            "কল ধরার অনুমতি নেই — সেটিংস → কমান্ডে দিন, অথবা নিজে ধরুন।",
+                            "No answer permission — grant it in Settings → Commands, or pick up yourself.",
+                        )
+                        else -> tr("কল ধরতে পারিনি — হয় কলটি বন্ধ হয়ে গেছে, নয় অ্যাপটি উত্তর বাটন দেয়নি। নিজে ধরুন।",
+                            "Could not answer — the call ended, or the app exposed no answer button. Please pick up manually.")
+                    },
+                    out.ok, "answer:${out.strategy.name.lowercase()}",
+                )
+                if (!out.ok) _dict.value = _dict.value.copy(needsSetup = true)
+            }
+
+            CmdIntent.CALL_DECLINE -> {
+                val out = calls.decline()
+                done(
+                    when {
+                        out.ok -> tr("কল কাটা হয়েছে ✓", "Call declined ✓")
+                        else -> tr("কল কাটা যায়নি — নিজে কেটে দিন।", "Could not decline the call — please end it manually.")
+                    },
+                    out.ok, "decline:${out.strategy.name.lowercase()}",
+                )
+                if (!out.ok) _dict.value = _dict.value.copy(needsSetup = true)
             }
 
             CmdIntent.MSG_DIGEST -> {
