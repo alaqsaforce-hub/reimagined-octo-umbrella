@@ -105,6 +105,14 @@ data class AppSettings(
     val speakResults: Boolean = true,
     /** Opt-in local crash reports: enabled by default only in debug builds. */
     val crashLoggingEnabled: Boolean = com.voicedock.ai.BuildConfig.DEBUG,
+
+    // ---- v1.0.0 hotword ----
+    /** Wake word "শাহরুখ" — OFF by default: an always-available microphone is the user's decision. */
+    val hotwordEnabled: Boolean = false,
+    /** Second opt-in: keep listening with the screen off (more battery, works from a pocket). */
+    val hotwordAlwaysOn: Boolean = false,
+    /** The first-run guide has been completed (each permission explained before it is asked for). */
+    val onboardingDone: Boolean = false,
 ) {
     /** Bridge to the pure, unit-tested intelligence layer (no Android types there). */
     fun assistantPrefs() = com.voicedock.ai.context.AssistantPrefs(

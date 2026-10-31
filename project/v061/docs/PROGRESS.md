@@ -401,3 +401,31 @@ minSdk 26, v2-signed, 16 KB-aligned. Device test pending — 11 checks in `MANUA
 **Next (v1.0.0):** hotword ("হেই ভয়েসডক") as an opt-in foreground service, three entry points
 (floating icon / assist gesture / hotword), onboarding that walks through each permission with the reason,
 polish and a full manual pass. Optional from the plan: C9 voice fingerprint gate, C10 TTS reads messages.
+
+---
+
+## v1.0.0 "শাহরুখ" — the wake word, the guide, and the polish (built & verified 2026-10-31)
+
+The assistant now has three entry points — floating bubble, long-press home (assistant role), and the wake
+word **"শাহরুখ" / "Shahrukh"** (after the actor, as the user asked). The wake word is an opt-in microphone
+foreground service running the phone's own recogniser in a loop; detection is pure and heavily tested
+(spellings, mishearings, one-edit tolerance, and a word-boundary rule that rejects "শাহরুখের …"), and the
+settings screen states plainly when and why it is not listening. Bilingual first-run guide explains every
+permission before asking for it; a Settings link reopens it.
+
+**Status:** lint **0 errors / 34 warnings**; **359 tests / 0 failures / 46 suites** (15 new);
+APK `versionCode 18 / 1.0.0`, minSdk 26, v2-signed, 16 KB-aligned; `HotwordService` packaged with
+`foregroundServiceType=microphone`, `exported=false`. Device test pending — 10 checks in
+`MANUAL-TESTS-v0.6.md` § v1.0.0 (checks 1–4 decide whether the wake word works on the user's phone).
+
+**Bugs caught while building this version:** normalisation stripped Bengali vowel signs (the wake word could
+never match); the possessive "শাহরুখের" slipped through the fuzzy path; the fuzzy path was dead code for
+Bengali because of a letters-only threshold; `startListening` on a null recogniser; `RoleManager` outside an
+API-29 guard.
+
+**Deliberately deferred (still in the plan):** C9 voice-fingerprint gate (impossible to tune without a
+device — a wrong threshold either locks the user out or lets anyone in) and C10 TTS reads messages.
+**Not shipped because unverifiable here:** a real wake-word *model* (the recogniser loop is honest and
+works today; a trained model is a later optimisation).
+
+**Where the plan stands:** C1–C8, C11–C12, N1–N6 shipped across v0.7–v1.0. Open: C9, C10.

@@ -52,12 +52,13 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import com.voicedock.ai.ui.screens.HomeScreen
+import com.voicedock.ai.ui.screens.OnboardingScreen
 import com.voicedock.ai.ui.screens.PrivacyScreen
 import com.voicedock.ai.ui.screens.SettingsScreen
 import com.voicedock.ai.ui.screens.WorkspaceScreen
 import com.voicedock.ai.ui.theme.VoiceDockTheme
 
-enum class Screen { HOME, WORKSPACE, KNOWLEDGE, DRAFTS, SETTINGS, PRIVACY, AI, CONNECTORS, AGENT }
+enum class Screen { ONBOARDING, HOME, WORKSPACE, KNOWLEDGE, DRAFTS, SETTINGS, PRIVACY, AI, CONNECTORS, AGENT }
 
 class MainActivity : ComponentActivity() {
     private var screen by mutableStateOf(Screen.HOME)
@@ -68,6 +69,8 @@ class MainActivity : ComponentActivity() {
     /** v0.10.0 — true when the activity was opened by the system assist gesture / assistant role. */
     private var startBubbleAfterLaunch by mutableStateOf(false)
     private var afterMicGrant: (() -> Unit)? = null
+    /** v1.0.0 — first run shows the guide (each permission explained before it is asked for). */
+    private var guidanceDone by mutableStateOf(true)
 
     private val micLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         resumeTick++
@@ -79,17 +82,20 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        guidanceDone = SettingsStore.state.value.onboardingDone
+        if (!guidanceDone && savedInstanceState == null) screen = Screen.ONBOARDING
         handleIntent(intent)
         val dictation = VoiceDock.dictation(this)
         setContent {
             VoiceDockTheme {
                 val settings by SettingsStore.state.collectAsState()
                 @Suppress("UNUSED_VARIABLE") val lang = settings.uiLanguage // recompose on language change
-                BackHandler(enabled = screen != Screen.HOME) { screen = if (screen == Screen.AI || screen == Screen.CONNECTORS || screen == Screen.AGENT) Screen.SETTINGS else Screen.HOME }
+                BackHandler(enabled = screen != Screen.HOME) { screen = if (screen == Screen.AI || screen == Screen.CONNECTORS || screen == Screen.AGENT || screen == Screen.ONBOARDING) Screen.SETTINGS else Screen.HOME }
                 Scaffold(
                     topBar = { TopAppBar(title = { Text(title(screen)) }) },
                     bottomBar = {
-                        NavigationBar {
+                        // The guide is a full screen: no bottom navigation until it is finished.
+                        if (screen != Screen.ONBOARDING) NavigationBar {
                             // v0.6: 3 primary surfaces. Knowledge / Drafts live behind the Home cards + Settings links.
                             listOf(Screen.HOME to tr("হোম", "Home"), Screen.WORKSPACE to tr("ডিক্টেশন", "Dictate"),
                                 Screen.SETTINGS to tr("সেটিংস", "Settings")).forEach { (s, label) ->
@@ -106,6 +112,11 @@ class MainActivity : ComponentActivity() {
                 ) { pad ->
                     Column(Modifier.padding(pad).fillMaxSize(), verticalArrangement = Arrangement.Top) {
                         when (screen) {
+                            Screen.ONBOARDING -> OnboardingScreen(resumeTick) {
+                                SettingsStore.update { it.copy(onboardingDone = true) }
+                                guidanceDone = true
+                                screen = Screen.HOME
+                            }
                             Screen.HOME -> HomeScreen(
                                 resumeTick = resumeTick, controller = dictation,
                                 requestMic = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) },
@@ -125,7 +136,7 @@ class MainActivity : ComponentActivity() {
                             Screen.AI -> AiProvidersScreen()
                             Screen.CONNECTORS -> ConnectorsScreen()
                             Screen.DRAFTS -> DraftsScreen(VoiceDock.drafts(this@MainActivity))
-                            Screen.SETTINGS -> SettingsScreen(openPrivacy = { screen = Screen.PRIVACY }, openAi = { screen = Screen.AI }, openConnectors = { screen = Screen.CONNECTORS }, openAgent = { screen = Screen.AGENT }, resumeTick = resumeTick, openKnowledge = { screen = Screen.KNOWLEDGE }, openDrafts = { screen = Screen.DRAFTS })
+                            Screen.SETTINGS -> SettingsScreen(openPrivacy = { screen = Screen.PRIVACY }, openAi = { screen = Screen.AI }, openConnectors = { screen = Screen.CONNECTORS }, openAgent = { screen = Screen.AGENT }, resumeTick = resumeTick, openKnowledge = { screen = Screen.KNOWLEDGE }, openDrafts = { screen = Screen.DRAFTS }, openOnboarding = { screen = Screen.ONBOARDING })
                             Screen.AGENT -> AgentScreen(resumeTick, start = { startAgent(it) },
                                 openAccessibility = { startActivity(Permissions.accessibilitySettings()) }, openAi = { screen = Screen.AI })
                             Screen.PRIVACY -> PrivacyScreen(resumeTick,
@@ -142,6 +153,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun title(s: Screen) = when (s) {
+        Screen.ONBOARDING -> tr("শুরু করা যাক", "Getting started")
         Screen.HOME -> "VoiceDock AI"
         Screen.WORKSPACE -> tr("ডিক্টেশন ও রিভিউ", "Dictation & review")
         Screen.DRAFTS -> tr("ড্রাফট ইতিহাস", "Draft history")

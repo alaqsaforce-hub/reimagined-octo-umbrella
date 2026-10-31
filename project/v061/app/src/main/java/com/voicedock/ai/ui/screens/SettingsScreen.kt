@@ -38,6 +38,7 @@ fun SettingsScreen(
     resumeTick: Int = 0,
     openKnowledge: () -> Unit = {},
     openDrafts: () -> Unit = {},
+    openOnboarding: () -> Unit = {},
 ) {
     val s by SettingsStore.state.collectAsState()
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -52,6 +53,14 @@ fun SettingsScreen(
             style = MaterialTheme.typography.bodySmall)
 
         AssistantSettingsSection(resumeTick)
+        HotwordSection(resumeTick)
+        HorizontalDivider()
+        Section(tr("শুরুর গাইড", "Getting started"))
+        Text(
+            tr("প্রতিটি অনুমতি কী কাজে লাগে তা আবার দেখতে চাইলে:", "To go through what each permission is for again:"),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row { TextButton(onClick = openOnboarding) { Text(tr("গাইড আবার দেখাও", "Show the guide again")) } }
         HorizontalDivider()
         EngineSection()
         KeyboardSection()

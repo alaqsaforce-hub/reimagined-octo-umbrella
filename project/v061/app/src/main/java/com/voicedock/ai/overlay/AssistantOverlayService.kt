@@ -173,6 +173,19 @@ class AssistantOverlayService : LifecycleService() {
             ACTION_HIDE -> removeBubble()
             ACTION_RESCAN -> activate()
             ACTION_CLOSE -> { closeEverything(); return START_NOT_STICKY }
+            // v1.0.0: the wake word was heard. Same bubble as a tap; if the command came in the same
+            // breath ("শাহরুখ, ওয়াটসঅ্যাপ খোলো") it runs immediately instead of waiting for speech.
+            ACTION_WAKE -> {
+                addBubble()
+                val spoken = intent?.getStringExtra(EXTRA_WAKE_COMMAND).orEmpty().trim()
+                if (spoken.isNotBlank()) {
+                    _dict.value = _dict.value.copy(visible = true, liveText = spoken)
+                    ensureBubbleVisible()
+                    runCommand(spoken)
+                } else {
+                    startDictationHere()
+                }
+            }
             else -> addBubble()
         }
         return START_NOT_STICKY
@@ -1487,6 +1500,9 @@ class AssistantOverlayService : LifecycleService() {
         const val ACTION_HIDE = "com.voicedock.ai.ASSISTANT_HIDE"
         const val ACTION_RESCAN = "com.voicedock.ai.ASSISTANT_RESCAN"
         const val ACTION_CLOSE = "com.voicedock.ai.ASSISTANT_CLOSE"
+        /** v1.0.0 — the hotword fired. */
+        const val ACTION_WAKE = "com.voicedock.ai.ASSISTANT_WAKE"
+        const val EXTRA_WAKE_COMMAND = "wake_command"
 
         private const val COLOR_IDLE = 0xFF455A64.toInt()
         private const val COLOR_SCANNING = 0xFF3DDCBF.toInt()

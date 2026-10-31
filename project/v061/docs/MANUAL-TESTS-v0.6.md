@@ -183,3 +183,28 @@ Setup: floating icon visible, Accessibility on, anything else open (e.g. the hom
 **Database migration — the important one**
 11. Upgrade *over* the existing v0.9.0 install (do not uninstall): Settings → কমান্ড must still list the
     memories and the notification count from before. Nothing may crash on first launch.
+
+---
+
+## v1.0.0 — wake word "শাহরুখ", guide, polish
+
+**Wake word (the checks that decide whether it is usable at all)**
+1. Settings → ‘শাহরুখ’ ওয়েক-ওয়ার্ড → চালু করো → allow mic → a persistent notification appears. Lock the
+   phone, unlock, then say **"শাহরুখ"** in a normal voice from ~1 m → the bubble opens and starts listening.
+2. In a quiet room, say it 10 times. Count the hits. Below ~7/10 the phone's recogniser is the limit — try
+   Settings → ডিকটেশনের ভাষা = English (India) and repeat, since "শাহরুখ" is a name, not a Bengali word.
+3. Say "শাহরুখ, হোয়াটসঅ্যাপ খোলো" in one breath → WhatsApp must open (the same-breath path).
+4. **Negative test:** talk about "শাহরুখের সিনেমা" / "শাহরুখের নতুন ছবি" → the bubble must **not** open.
+5. Turn the screen off (always-on OFF) → within a few seconds the notification must say "স্ক্রিন বন্ধ — থেমে
+   আছে"; screen back on → it resumes by itself.
+6. Start a dictation, then say "শাহরুখ" → it must **not** steal the microphone mid-sentence; it resumes after.
+7. Turn on "স্ক্রিন বন্ধ থাকলেও শুনুক" → grant the battery exemption when offered → screen off, say it → opens.
+
+**Guide / polish**
+8. Fresh install (app data cleared) → the guide must appear first, with truthful ✓/✗ per step; "পরে করবো"
+   leaves immediately; Settings → শুরুর গাইড reopens it.
+9. Notification → বন্ধ → the microphone closes and the setting flips off (no orphaned mic).
+
+**Upgrade**
+10. Install over v0.10.0 without uninstalling: memories, notification log, commands and settings must all
+    still be there, and the wake word must default to **off**.
