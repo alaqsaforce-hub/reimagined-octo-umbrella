@@ -49,6 +49,7 @@ import com.voicedock.ai.settings.SettingsStore
 import com.voicedock.ai.settings.UiLanguage
 import com.voicedock.ai.settings.tr
 import com.voicedock.ai.ui.MainActivity
+import com.voicedock.ai.ai.AiReadinessCore
 import com.voicedock.ai.text.AiFormatter
 import com.voicedock.ai.text.FormatStyle
 import com.voicedock.ai.vision.ScreenAssistant
@@ -292,6 +293,7 @@ class AssistantOverlayService : LifecycleService() {
                     if (t.isNotBlank()) { ClipboardInsertion.insert(this, t); toast(tr("কপি হয়েছে", "Copied")) }
                 },
                 onClose = { closeDictBubble() },
+                onOpenSettings = { closeDictBubble(); openSettings() },
             )
         }
         val dm = resources.displayMetrics
@@ -354,13 +356,18 @@ class AssistantOverlayService : LifecycleService() {
     private fun rephraseDictated() {
         val text = _dict.value.liveText.trim()
         if (text.isBlank()) return
-        if (!AiSetup.ready(this)) {
-            _dict.value = _dict.value.copy(note = tr("সাজানোর জন্য একটি AI key দরকার (সেটিংস → AI)", "Tidying needs an AI key (Settings → AI)"))
+        val readiness = AiSetup.readiness(this)
+        if (!readiness.ok) {
+            // v0.6.7: say which provider is stuck and what to do — not "add a key" when a key exists.
+            _dict.value = _dict.value.copy(
+                note = AiReadinessCore.message(readiness.code, readiness.provider?.label ?: "AI", isBengali()),
+                needsSetup = AiReadinessCore.needsSettings(readiness.code),
+            )
             return
         }
         val style = runCatching { FormatStyle.valueOf(SettingsStore.state.value.formatStyle) }.getOrDefault(FormatStyle.CLEAN)
         _dict.value = _dict.value.copy(
-            busy = true, busyLabel = tr("সাজানো হচ্ছে…", "Tidying up…"), note = "", answer = "",
+            busy = true, busyLabel = tr("সাজানো হচ্ছে…", "Tidying up…"), note = "", answer = "", needsSetup = false,
         )
         lifecycleScope.launch {
             runCatching {
@@ -376,10 +383,12 @@ class AssistantOverlayService : LifecycleService() {
                         note = if (r.warnings.isEmpty()) tr("✨ সাজানো হয়েছে", "✨ Tidied up") else r.warnings.joinToString(" · "),
                     )
                 }
-            }.onFailure {
+            }.onFailure { e ->
+                val why = if (e is AiException) AiSetup.explain(e) else (e.message ?: e.javaClass.simpleName)
                 _dict.value = _dict.value.copy(
                     busy = false, busyLabel = "",
-                    note = tr("AI সংযোগ ব্যর্থ — লেখা অপরিবর্তিত", "AI request failed — text unchanged"),
+                    note = tr("AI সংযোগ ব্যর্থ — লেখা অপরিবর্তিত: ", "AI request failed — text unchanged: ") + why,
+                    needsSetup = true,
                 )
             }
         }
@@ -393,13 +402,19 @@ class AssistantOverlayService : LifecycleService() {
             _dict.value = _dict.value.copy(note = tr("কোড/পিন-সদৃশ লেখা AI-তে পাঠানো হয়নি", "Code/PIN-like text was not sent to the AI"))
             return
         }
-        if (!AiSetup.ready(this)) {
-            _dict.value = _dict.value.copy(note = tr("উত্তরের জন্য একটি AI key দরকার (সেটিংস → AI)", "An AI key is needed for answers (Settings → AI)"))
+        val readiness = AiSetup.readiness(this)
+        if (!readiness.ok) {
+            _dict.value = _dict.value.copy(
+                answer = LocalIntentRouter.reply(text, null, isBengali(), requestMayHaveBeenSent = false),
+                providerLabel = "",
+                note = AiReadinessCore.message(readiness.code, readiness.provider?.label ?: "AI", isBengali()),
+                needsSetup = AiReadinessCore.needsSettings(readiness.code),
+            )
             return
         }
         val bn = SettingsStore.state.value.uiLanguage == UiLanguage.BN
         _dict.value = _dict.value.copy(
-            busy = true, busyLabel = tr("উত্তর তৈরি হচ্ছে…", "Asking your AI…"), answer = "", note = "",
+            busy = true, busyLabel = tr("উত্তর তৈরি হচ্ছে…", "Asking your AI…"), answer = "", note = "", needsSetup = false,
         )
         lifecycleScope.launch {
             runCatching {
@@ -412,10 +427,14 @@ class AssistantOverlayService : LifecycleService() {
                     answer = a.text.trim(), providerLabel = BubbleAi.providerLabel(a),
                     busy = false, busyLabel = "",
                 )
-            }.onFailure {
+            }.onFailure { e ->
+                val why = if (e is AiException) AiSetup.explain(e) else (e.message ?: e.javaClass.simpleName)
+                val sent = (e as? AiException)?.kind != AiException.Kind.NOT_CONFIGURED
                 _dict.value = _dict.value.copy(
+                    answer = LocalIntentRouter.reply(text, null, isBengali(), requestMayHaveBeenSent = sent),
                     busy = false, busyLabel = "",
-                    note = tr("AI উত্তর দিতে পারেনি", "The AI could not answer"),
+                    note = tr("AI উত্তর দিতে পারেনি — নিচে অফলাইন উত্তর: ", "The AI could not answer — offline fallback below: ") + why,
+                    needsSetup = true,
                 )
             }
         }
@@ -843,6 +862,7 @@ class AssistantOverlayService : LifecycleService() {
         closeWindows()
     }
 
+    private fun isBengali() = SettingsStore.state.value.uiLanguage == UiLanguage.BN
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
     private fun overlayType() = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 

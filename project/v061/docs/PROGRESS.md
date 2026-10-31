@@ -276,3 +276,23 @@ Accessibility off.
 
 **Next:** the screen-reading agent commands (open an app by voice, today's-message summary, reply to
 a chosen sender, music control) are still not implemented; they are the next increment.
+
+---
+
+## v0.6.7 — the AI reason, not a generic "add a key" (built & verified 2026-10-31)
+
+Reported from the phone: the bubble's ✨ / 💬 looked like the AI provider "was not connected".
+Cause: `AiSetup.ready()` is yes/no, and v0.6.6 turned all five blocked states (no key, **no model
+chosen**, cloud consent off, local-only, paid gating) into the single sentence "an AI key is needed";
+a failed request also hid the provider's own error. Fixed with `ai/AiReadiness.kt` (pure decision +
+wording, 10 unit tests), `AiSetup.readiness/readinessText/needsSetup`, a **⚙** action in the bubble
+that opens Settings → AI, the provider's real error appended to ✨ failures, and a `LocalIntentRouter`
+offline answer whenever 💬 cannot reach a provider, so the bubble never shows an empty answer.
+
+**Status:** compiles; `:app:lintDebug` 0 errors / 30 warnings; `:app:testDebugUnitTest` **241/0/0 in
+39 suites**; APK `versionCode 13 / 0.6.7`, minSdk 26, v2-signed, 16 KB-aligned. Device test pending
+(three checks in `V0.6.7-CHANGES.md` §5).
+
+**Plan for the Jarvis features:** `docs/JARVIS-UPGRADE-PLAN.md` — capability table, Android
+feasibility per feature (calls, WhatsApp calls, notification reading, media, hotword), `command/`
+package design, phases v0.7 → v1.0, and the build/verify procedure for each.

@@ -81,6 +81,27 @@ object AiSetup {
     /** Cheap check (no decryption): at least one provider passes the policy. */
     fun ready(ctx: Context): Boolean { val s = SettingsStore.state.value; return AiProvider.entries.any { blockReason(ctx, it, s) == null } }
 
+    /** v0.6.7 — same check, but also *why not*, so the bubble can say something actionable. */
+    fun readiness(ctx: Context): AiReadinessCore.Decision {
+        val s = SettingsStore.state.value
+        val order = s.aiOrder.mapNotNull { AiProvider.byId(it) } + AiProvider.entries.filter { it.id !in s.aiOrder }
+        val cache = HashMap<AiProvider, String?>()
+        return AiReadinessCore.decide(
+            order = order,
+            reason = { p -> cache.getOrPut(p) { blockReason(ctx, p, s) } },
+            hasKey = { p -> hasKey(ctx, p) },
+        )
+    }
+
+    /** Ready-or-explain, in the user's language. */
+    fun readinessText(ctx: Context): String {
+        val d = readiness(ctx)
+        val bn = SettingsStore.state.value.uiLanguage == com.voicedock.ai.settings.UiLanguage.BN
+        return AiReadinessCore.message(d.code, d.provider?.label ?: "AI", bn)
+    }
+
+    fun needsSetup(ctx: Context): Boolean = AiReadinessCore.needsSettings(readiness(ctx).code)
+
     fun reasonText(code: String?): String = when (code) {
         null -> tr("✓ ব্যবহারযোগ্য", "✓ Ready")
         "local_only" -> tr("শুধু-লোকাল মোড চালু", "Local-only mode is on")

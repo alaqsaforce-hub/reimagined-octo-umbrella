@@ -54,6 +54,7 @@ fun DictationBubble(
     onAsk: () -> Unit,
     onCopy: () -> Unit,
     onClose: () -> Unit,
+    onOpenSettings: () -> Unit = {},
 ) {
     val cfg = LocalConfiguration.current
     val maxWidth = (cfg.screenWidthDp * 0.68f).dp
@@ -135,6 +136,9 @@ fun DictationBubble(
                     horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.End),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (state.needsSetup) {
+                        MiniAction("⚙", tr("AI সেটআপ", "AI setup"), onOpenSettings)
+                    }
                     if (state.answer.isNotBlank()) {
                         MiniAction("📋", tr("কপি", "Copy"), onCopy)
                     }

@@ -40,6 +40,8 @@ data class DictationBubbleState(
     val answer: String = "",
     val providerLabel: String = "",
     val note: String = "",
+    /** v0.6.7 — the note is an AI setup problem; show ⚙ to fix it in Settings. */
+    val needsSetup: Boolean = false,
 )
 
 /** Label for one action chip (bn/en). */
