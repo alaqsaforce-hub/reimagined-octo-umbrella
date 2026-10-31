@@ -26,9 +26,9 @@ object CommandRegistry {
         Intent.CALL_PLACE to IntentMeta(setOf(Slot.CONTACT), true, false, "ফোন করা (v0.9.0)", "Place a call (v0.9.0)"),
         Intent.CALL_ANSWER to IntentMeta(emptySet(), true, false, "কল ধরা (v0.9.0)", "Answer a call (v0.9.0)"),
         Intent.CALL_DECLINE to IntentMeta(emptySet(), true, false, "কল কাটা (v0.9.0)", "Decline a call (v0.9.0)"),
-        Intent.MSG_DIGEST to IntentMeta(emptySet(), false, false, "মেসেজের সারমর্ম (v0.8.0)", "Message digest (v0.8.0)"),
-        Intent.MSG_REPLY to IntentMeta(setOf(Slot.CONTACT, Slot.TEXT), true, false, "মেসেজে উত্তর (v0.8.0)", "Reply to a message (v0.8.0)"),
-        Intent.MSG_READ to IntentMeta(emptySet(), false, false, "মেসেজ পড়া (v0.8.0)", "Read messages (v0.8.0)"),
+        Intent.MSG_DIGEST to IntentMeta(emptySet(), false, true, "আজকের মেসেজের সারমর্ম", "Today's messages at a glance"),
+        Intent.MSG_REPLY to IntentMeta(setOf(Slot.CONTACT, Slot.TEXT), true, true, "মেসেজে উত্তর পাঠানো", "Reply to a message"),
+        Intent.MSG_READ to IntentMeta(emptySet(), false, true, "মেসেজ জোরে পড়া", "Read messages aloud"),
         Intent.MEDIA to IntentMeta(setOf(Slot.QUERY), false, false, "মিউজিক নিয়ন্ত্রণ (v0.10.0)", "Media control (v0.10.0)"),
         Intent.UNKNOWN to IntentMeta(setOf(Slot.QUERY), false, false, "বোঝা যায়নি", "Not understood"),
     )

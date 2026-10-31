@@ -98,7 +98,10 @@ object CommandPipeline {
             Intent.CALL_ANSWER -> bn("কল ধরবে", "answer the call")
             Intent.CALL_DECLINE -> bn("কল কাটবে", "decline the call")
             Intent.MSG_DIGEST -> bn("মেসেজের সারমর্ম দেবে", "summarise today's messages")
-            Intent.MSG_REPLY -> bn("‘${spec.slot(Slot.CONTACT).orEmpty()}’ কে উত্তর পাঠাবে", "reply to ‘${spec.slot(Slot.CONTACT).orEmpty()}’")
+            Intent.MSG_REPLY -> bn(
+                "‘${spec.slot(Slot.CONTACT).orEmpty()}’ কে পাঠাবে: “${spec.slot(Slot.TEXT).orEmpty().take(60)}”",
+                "send to ‘${spec.slot(Slot.CONTACT).orEmpty()}’: “${spec.slot(Slot.TEXT).orEmpty().take(60)}”",
+            )
             Intent.MSG_READ -> bn("মেসেজ পড়ে শোনাবে", "read messages aloud")
             Intent.MEDIA -> bn("মিউজিক নিয়ন্ত্রণ করবে", "control the music")
             Intent.UNKNOWN -> bn("কিছু না", "nothing")

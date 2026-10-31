@@ -62,6 +62,11 @@ import com.voicedock.ai.command.CommandSpec
 import com.voicedock.ai.command.Intent as CmdIntent
 import com.voicedock.ai.command.Slot
 import com.voicedock.ai.memory.MemoryStore
+import com.voicedock.ai.notify.Digest
+import com.voicedock.ai.notify.NotifStore
+import com.voicedock.ai.notify.NotificationAccess
+import com.voicedock.ai.notify.RemoteReply
+import com.voicedock.ai.notify.SenderMatch
 import com.voicedock.ai.memory.MemoryText
 import com.voicedock.ai.tts.Speaker
 import com.voicedock.ai.text.AiFormatter
@@ -113,6 +118,7 @@ class AssistantOverlayService : LifecycleService() {
     private val memory by lazy { MemoryStore(filesDir) }
     private val commandLog by lazy { CommandLog(filesDir) }
     private val launcher by lazy { AppLauncher(this) }
+    private val notifStore by lazy { NotifStore(filesDir) }
     private val speaker by lazy { Speaker(this) }
     /** Buttons currently shown in the bubble, and the command waiting for a confirmation. */
     private var pendingChoices: List<Choice> = emptyList()
@@ -505,8 +511,55 @@ class AssistantOverlayService : LifecycleService() {
     }
 
     /** Runs the pure decision layer and shows whatever it asks for. */
-    private fun handleCommand(spec: CommandSpec, source: String) {
+    private fun handleCommand(specIn: CommandSpec, source: String) {
+        var spec = specIn
         val bn = isBengali()
+        // v0.8: a reply needs a real sender from today's notifications — resolve it before confirming.
+        if (spec.intent == CmdIntent.MSG_REPLY) {
+            if (!NotificationAccess.isGranted(this)) {
+                _dict.value = _dict.value.copy(
+                    note = tr(
+                        "নোটিফিকেশন অ্যাক্সেস নেই — সেটিংস → কমান্ডে গিয়ে চালু করুন।",
+                        "Notification access is off — enable it in Settings → Commands.",
+                    ),
+                    needsSetup = true, choices = emptyList(), answer = "",
+                )
+                ensureBubbleVisible()
+                commandLog.record(spec.raw, spec.intent, spec.confidence, source, "blocked", false, "no notification access")
+                return
+            }
+            val senders = notifStore.sendersSince(dayStart())
+            if (senders.isEmpty()) {
+                _dict.value = _dict.value.copy(
+                    note = tr("আজ কোনো প্রেরকের মেসেজ নেই, তাই উত্তর দেওয়ার কেউ নেই।", "No messages today, so there is nobody to reply to."),
+                    choices = emptyList(), answer = "",
+                )
+                ensureBubbleVisible()
+                commandLog.record(spec.raw, spec.intent, spec.confidence, source, "none", false, "no senders")
+                return
+            }
+            val q = spec.slot(Slot.CONTACT).orEmpty()
+            val hits = SenderMatch.resolve(q, senders)
+            when {
+                hits.isEmpty() -> {
+                    showChoices(
+                        tr("‘$q’ নামে আজ কাউকে মেসেজ করতে দেখিনি। কাকে পাঠাবো?", "Nobody called ‘$q’ messaged today. Who should I send it to?"),
+                        senders.take(4).map { Choice(it, CmdIntent.MSG_REPLY, spec.slots + (Slot.CONTACT to it)) },
+                        spec, source, ok = true, strategy = "clarify",
+                    )
+                    return
+                }
+                hits.size > 1 -> {
+                    showChoices(
+                        tr("কাকে পাঠাবো?", "Which one?"),
+                        hits.take(4).map { Choice(it, CmdIntent.MSG_REPLY, spec.slots + (Slot.CONTACT to it)) },
+                        spec, source, ok = true, strategy = "clarify",
+                    )
+                    return
+                }
+                q != hits.first() -> spec = spec.copy(slots = spec.slots + (Slot.CONTACT to hits.first()))
+            }
+        }
         val candidates: Map<Slot, List<String>> = when {
             spec.intent == CmdIntent.APP_LAUNCH && spec.slot(Slot.APP).isNullOrBlank() -> emptyMap()
             spec.intent == CmdIntent.APP_LAUNCH -> {
@@ -658,6 +711,54 @@ class AssistantOverlayService : LifecycleService() {
                     else tr("এই ফোনে টেক্সট-টু-স্পিচ বাংলা চালু নেই — লেখা হিসেবেই দেখানো হলো।", "This phone has no usable speech voice — showing the text instead."),
                     ok, "tts",
                 )
+            }
+
+            CmdIntent.MSG_DIGEST -> {
+                if (!NotificationAccess.isGranted(this)) {
+                    val msg = tr("নোটিফিকেশন অ্যাক্সেস নেই — সেটিংস → কমান্ডে চালু করুন।", "Notification access is off — enable it in Settings → Commands.")
+                    done(msg, false, "blocked")
+                    _dict.value = _dict.value.copy(needsSetup = true, note = msg)
+                } else {
+                    val text = Digest.summary(notifStore.all(), dayStart(), bn)
+                    done(text, true, "digest")
+                    if (SettingsStore.state.value.speakResults) speaker.speak(text, bn)
+                }
+            }
+
+            CmdIntent.MSG_READ -> {
+                if (!NotificationAccess.isGranted(this)) {
+                    val msg = tr("নোটিফিকেশন অ্যাক্সেস নেই — সেটিংস → কমান্ডে চালু করুন।", "Notification access is off — enable it in Settings → Commands.")
+                    done(msg, false, "blocked")
+                    _dict.value = _dict.value.copy(needsSetup = true, note = msg)
+                } else {
+                    val text = Digest.readAloud(notifStore.all(), 5, bn)
+                    val ok = speaker.speak(text, bn)
+                    done(if (ok) text else tr("$text\n\n(এই ফোনে বাংলা ভয়েস নেই — লেখায় দেখানো হলো।)", "$text\n\n(This phone has no Bangla voice — shown as text.)"), true, "tts")
+                }
+            }
+
+            CmdIntent.MSG_REPLY -> {
+                val sender = spec.slot(Slot.CONTACT).orEmpty()
+                val body = spec.slot(Slot.TEXT).orEmpty()
+                val live = RemoteReply.find(sender)
+                val reason = RemoteReply.send(this, live, body)
+                if (reason == null) {
+                    done(tr("‘$sender’ কে পাঠানো হয়েছে ✓", "Sent to ‘$sender’ ✓"), true, "directReply")
+                } else {
+                    // The trailing comma belongs to done(...), so the message is built first.
+                    val msg = when (reason) {
+                        "no_notification" -> tr(
+                            "‘$sender’-এর নোটিফিকেশন আর নেই — অ্যাপটি একবার খুলে দেখুন, তারপর আবার বলুন।",
+                            "‘$sender’ has no live notification — open the app once, then try again.",
+                        )
+                        "no_action" -> tr(
+                            "এই নোটিফিকেশনে সরাসরি উত্তর দেওয়ার সুবিধা নেই — অ্যাপ থেকে পাঠাতে হবে।",
+                            "That notification offers no direct reply — it has to be sent from the app.",
+                        )
+                        else -> tr("উত্তর পাঠানো যায়নি (অনুমতি/সিস্টেম বাধা)।", "The reply was blocked (permission/system).")
+                    }
+                    done(msg, false, "directReply")
+                }
             }
 
             CmdIntent.ASK_AI -> {
@@ -1095,6 +1196,16 @@ class AssistantOverlayService : LifecycleService() {
     }
 
     private fun isBengali() = SettingsStore.state.value.uiLanguage == UiLanguage.BN
+
+    /** Local midnight — "today" means the user's day, not UTC. */
+    private fun dayStart(): Long {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
     private fun overlayType() = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 

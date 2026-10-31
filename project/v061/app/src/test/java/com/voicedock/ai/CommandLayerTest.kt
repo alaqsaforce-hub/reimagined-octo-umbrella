@@ -174,8 +174,8 @@ class CommandLayerTest {
             CommandSpec.of(Intent.MSG_REPLY, "reply", 0.99, Slot.CONTACT to "রহিম", Slot.TEXT to "পরে ফোন করব"),
             bengali = false,
         )
-        // MSG_REPLY is still unavailable in v0.7, so the unavailable branch wins first.
-        assertTrue(d is CommandDecision.Clarify)
+        // v0.8.0 made MSG_REPLY available, so the destructive branch now asks for confirmation.
+        assertTrue(d is CommandDecision.Confirm)
         assertTrue(CommandRegistry.isDestructive(Intent.MSG_REPLY))
         assertTrue(CommandRegistry.isDestructive(Intent.CALL_DECLINE))
         assertFalse(CommandRegistry.isDestructive(Intent.APP_LAUNCH))

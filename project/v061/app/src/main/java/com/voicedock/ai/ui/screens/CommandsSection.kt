@@ -22,6 +22,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.voicedock.ai.command.CommandLog
 import com.voicedock.ai.memory.MemoryStore
+import com.voicedock.ai.notify.NotificationAccess
+import com.voicedock.ai.notify.NotifStore
 import com.voicedock.ai.settings.SettingsStore
 import com.voicedock.ai.settings.UiLanguage
 import com.voicedock.ai.settings.tr
@@ -42,6 +44,9 @@ fun CommandsSection() {
     val bn = s.uiLanguage == UiLanguage.BN
     var tick by remember { mutableIntStateOf(0) }
 
+    val notifAccess = remember(tick) { NotificationAccess.isGranted(ctx) }
+    val notifStore = remember(tick) { NotifStore(ctx.filesDir) }
+    val captured = remember(tick) { runCatching { notifStore.all().size }.getOrDefault(0) }
     val memory = remember(tick) { MemoryStore(ctx.filesDir) }
     val log = remember(tick) { CommandLog(ctx.filesDir) }
     val memories = remember(tick) { runCatching { memory.all().take(8) }.getOrDefault(emptyList()) }
@@ -67,10 +72,38 @@ fun CommandsSection() {
 
     Text(
         tr(
-            "এখনো চালু হয়নি (পরের ভার্সনে): ফোন করা/ধরা/কাটা (v0.9), মেসেজ পড়া ও উত্তর (v0.8), গান নিয়ন্ত্রণ (v0.10)। এই কমান্ডগুলো চিনতে পারে এবং কী করতে হবে জিজ্ঞেস করে — ভুয়া ‘হয়ে গেছে’ বলে না।",
-            "Not enabled yet (later versions): calls (v0.9), messages (v0.8), media (v0.10). Those are recognised and explained instead of being faked.",
+            "এখনো চালু হয়নি (পরের ভার্সনে): ফোন করা/ধরা/কাটা (v0.9), গান নিয়ন্ত্রণ (v0.10)। এই কমান্ডগুলো চিনতে পারে এবং কী করতে হবে জিজ্ঞেস করে — ভুয়া ‘হয়ে গেছে’ বলে না।",
+            "Not enabled yet (later versions): calls (v0.9), media (v0.10). Those are recognised and explained instead of being faked.",
         ),
         style = MaterialTheme.typography.bodySmall,
+    )
+
+    // ---- v0.8.0 notification access ----
+    HorizontalDivider(Modifier.padding(top = 8.dp))
+    Text(tr("মেসেজ (নোটিফিকেশন)", "Messages (notifications)"), style = MaterialTheme.typography.titleSmall)
+    Text(
+        tr(
+            if (notifAccess) "নোটিফিকেশন অ্যাক্সেস: ✓ চালু — $captured টি নোটিফিকেশন সংরক্ষিত (সর্বোচ্চ ৪০০)।"
+            else "নোটিফিকেশন অ্যাক্সেস: ✗ বন্ধ — “আজ কে মেসেজ দিয়েছে?” ও সরাসরি উত্তর কাজ করবে না।",
+            if (notifAccess) "Notification access: ✓ on — $captured notifications stored (max 400)."
+            else "Notification access: ✗ off — “who messaged me today?” and direct reply will not work.",
+        ),
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Row(Modifier.fillMaxWidth()) {
+        Text(tr("নোটিফিকেশন থেকে পড়া", "Read from notifications"), Modifier.weight(1f))
+        Switch(checked = s.assistantBackgroundEvents, onCheckedChange = { v -> SettingsStore.update { it.copy(assistantBackgroundEvents = v) } })
+    }
+    Row(Modifier.fillMaxWidth()) {
+        TextButton(onClick = { NotificationAccess.openSettings(ctx) }) { Text(tr("নোটিফিকেশন অ্যাক্সেস দিন", "Grant notification access")) }
+        TextButton(onClick = { runCatching { notifStore.clear() }; tick++ }) { Text(tr("সংরক্ষিত সব মুছুন", "Clear stored")) }
+    }
+    Text(
+        tr(
+            "অ্যাপটি যা সংরক্ষণ করে: প্রেরকের নাম, সময়, ও মেসেজের লেখা (অ্যাপ প্রিভিউ বন্ধ রাখলে লেখা থাকে না)। কিছুই ইন্টারনেটে যায় না।",
+            "What is stored: sender, time and message text (none if the app hides previews). Nothing is uploaded.",
+        ),
+        style = MaterialTheme.typography.labelSmall,
     )
 
     HorizontalDivider(Modifier.padding(top = 8.dp))

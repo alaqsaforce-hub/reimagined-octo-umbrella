@@ -67,6 +67,29 @@ object CommandParser {
         if (containsAny(low, "পড়ে শোনাও", "পড়ে শোনা", "জোরে পড়", "read aloud", "read it out", "speak it")) {
             return spec(Intent.SPEAK, 0.95, Slot.TEXT to afterAny(raw, low, "পড়ে শোনাও", "পড়ে শোনা", "জোরে পড়", "read aloud", "read it out", "speak it"))
         }
+        // --- reply to a sender (v0.8): "রহিমকে বলো আমি পরে ফোন করব" / "tell Rahim I'll call later" ---
+        val replyVerbs = arrayOf("বলো যে", "কে বলো", "বলো ", "উত্তর দাও", "রিপ্লাই দাও", "মেসেজ দাও", "reply to", "tell ", "message ")
+        if (containsAny(low, *replyVerbs)) {
+            for (v in replyVerbs) {
+                val i = low.indexOf(v)
+                if (i < 0) continue
+                // Bangla puts the person before the verb ("রহিমকে বলো …"), English after it ("tell Karim …").
+                val latinVerb = v.first().code < 128
+                var who = if (latinVerb) "" else beforeAny(raw, low, v)
+                var body = afterAnyFrom(raw, low, i + v.length)
+                if (latinVerb) {
+                    val first = body.substringBefore(' ')
+                    if (first.isNotBlank()) { who = first; body = body.removePrefix(first).trim() }
+                }
+                if (who.isNotBlank() && body.isNotBlank()) {
+                    return spec(Intent.MSG_REPLY, 0.9, Slot.CONTACT to com.voicedock.ai.notify.SenderMatch.cleanName(who), Slot.TEXT to body)
+                }
+            }
+        }
+        // --- read messages aloud ---
+        if (containsAny(low, "মেসেজ পড়", "মেসেজগুলো পড়", "শেষ মেসেজ", "read messages", "read my messages", "শেষ পাঁচটা", "শেষ ৫টা")) {
+            return spec(Intent.MSG_READ, 0.9, Slot.QUERY to raw.trim())
+        }
         // --- calls (recognised, executed from v0.9) ---
         if (containsAny(low, "কেটে দাও", "কেটে দে", "কাটো", "decline", "reject call")) return spec(Intent.CALL_DECLINE, 0.9)
         if (containsAny(low, "রিং হচ্ছে", "ধরো", "কল ধর", "answer the call", "pick up")) return spec(Intent.CALL_ANSWER, 0.9)
@@ -132,6 +155,15 @@ object CommandParser {
             if (i >= 0 && (best < 0 || i < best)) { best = i; keyLen = k.length }
         }
         return if (best < 0) text else text.substring(best + keyLen).trim()
+    }
+
+    /** Text after an absolute index in [low] (which is length-aligned with [text]). */
+    private fun afterAnyFrom(text: String, low: String, index: Int): String {
+        // [index] is already "just past the verb", so start there (do not skip a character).
+        var start = index.coerceIn(0, text.length)
+        // skip a single space so "বলো আমি" → "আমি"
+        while (start < text.length && text[start] == ' ') start++
+        return text.substring(start.coerceAtMost(text.length)).trim()
     }
 
     /** Text BEFORE the first matching trigger — Bangla commands put the object first. */

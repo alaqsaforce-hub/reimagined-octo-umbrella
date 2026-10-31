@@ -323,3 +323,27 @@ declaration already exposes launchable apps); memory is a capped JSON file in th
 `NotifStore` in v0.8 will need a migration anyway, and that is the right moment for one.
 
 **Next:** v0.8.0 — real `NotificationListenerService`, message digest per sender, Direct Reply.
+
+---
+
+## v0.8.0 "knows my messages" — Phase 2 of the Jarvis plan (built & verified 2026-10-31)
+
+Notification access is now real: `VoiceDockNotificationListener` (a no-op since v0.6) captures sender,
+app, time and the message text **the app chose to show**, capped at 400 rows in the private dir. Three
+new commands, all via hold-⏎: "আজ কে কে মেসেজ দিয়েছে?" (per-sender digest, spoken if enabled),
+"শেষ ৫টা মেসেজ পড়ো" (read aloud), and "রহিমকে বলো …" (Direct Reply via `RemoteInput`, WhatsApp never
+opens). The sender is resolved **before** the confirmation card, so what you confirm is the real name
+and the exact text. When previews are hidden the digest says so and never invents content; every reply
+failure has its own sentence instead of a generic error.
+
+**Status:** lint **0 errors / 30 warnings**; **289 tests / 0 failures / 41 suites** (18 new in
+`NotifyLayerTest`); APK `versionCode 15 / 0.8.0`, minSdk 26, v2-signed, 16 KB-aligned.
+Device test pending — 7 checks in `MANUAL-TESTS-v0.6.md` § v0.8.0.
+
+**Bugs the tests caught before shipping:** an off-by-one that ate the first letter of an English
+recipient ("tell Karim" → "arim"), the reply parser being shadowed by the call parser for sentences
+containing "ফোন কর", and a `NewApi` lint error (`Notification.Action.getSemanticAction` is API 28).
+
+**Next:** v0.9.0 — calls: `CallController` (place/answer/end with a strategy chain), WhatsApp call
+via notification actions, contact resolution, `CALL_PHONE` / `ANSWER_PHONE_CALLS` / `READ_CONTACTS`,
+and the Room migration that finally moves memory + the notification log out of JSON files.

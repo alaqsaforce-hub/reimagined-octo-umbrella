@@ -122,3 +122,20 @@ Setup: floating icon visible, Accessibility on, anything else open (e.g. the hom
 6. **Ambiguity.** If both WhatsApp and WhatsApp Business are installed: "whatsapp খোলো" → two app
    buttons, and picking one opens it.
 7. **Log.** Settings → কমান্ড shows each of the above with ✓/✗, `offline` or `model`, and the strategy.
+
+---
+
+## v0.8.0 — messages (notification access)
+
+1. Settings → কমান্ড → **"নোটিফিকেশন অ্যাক্সেস দিন"** → in the Android list enable VoiceDock → go back:
+   the row must read ✓ with a stored count that grows as messages arrive.
+2. Ask someone to message you on WhatsApp, then dictate "আজ কে কে মেসেজ দিয়েছে?" and **hold ⏎**.
+   *Pass:* their name, message count and last line appear; nobody who did not write is listed.
+3. Turn WhatsApp's message preview off (or lock-screen "hide sensitive content"), message again →
+   the digest must say the text is hidden and must **not** show invented content.
+4. Dictate "রহিমকে বলো আমি পরে ফোন করব" (use a real sender's name) → **hold ⏎**.
+   *Pass:* a confirmation card with the name **and** the exact text. Tap "বাতিল" → nothing is sent.
+5. Repeat and tap "হ্যাঁ" → the message appears in the WhatsApp chat and the bubble says
+   "পাঠানো হয়েছে ✓". WhatsApp must not have been opened by VoiceDock.
+6. Dictate "শেষ ৫টা মেসেজ পড়ো" → the last five are read aloud (or shown if the phone has no Bangla voice).
+7. Settings → **"সংরক্ষিত সব মুছুন"** → the stored count returns to 0.
