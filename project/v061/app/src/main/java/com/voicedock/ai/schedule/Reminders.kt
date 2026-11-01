@@ -76,6 +76,107 @@ object Reminders {
 
     suspend fun pending(ctx: Context): List<ReminderRow> = VoiceDock.db(ctx).reminders().pending()
 
+    /**
+     * v1.2.1 — a message to send later. Same row, same alarm; only [ReminderRow.kind] differs, so a
+     * reminder and a scheduled message can never diverge in how they survive a reboot.
+     */
+    suspend fun addMessage(ctx: Context, target: String, body: String, atMillis: Long, source: String = "voice"): ReminderRow {
+        val row = ReminderRow(
+            id = newId(),
+            text = body.trim(),
+            triggerAt = atMillis,
+            createdAt = System.currentTimeMillis(),
+            status = ReminderStatus.PENDING,
+            source = source,
+            kind = com.voicedock.ai.jobs.MessageJobCore.KIND_MESSAGE,
+            target = target.trim(),
+        )
+        VoiceDock.db(ctx).reminders().upsert(row)
+        schedule(ctx, row)
+        return row
+    }
+
+    /**
+     * What will happen at fire time, decided now so the confirmation is true:
+     * a live replyable notification today → silent send; a resolvable number → open the chat; else notify.
+     */
+    fun planFor(ctx: Context, target: String): com.voicedock.ai.jobs.SendPlan {
+        val live = com.voicedock.ai.notify.RemoteReply.find(target) != null
+        val number = runCatching {
+            com.voicedock.ai.telecom.ContactResolver(ctx).resolve(target).firstOrNull()?.number
+        }.getOrNull()
+        return com.voicedock.ai.jobs.MessageJobCore.plan(liveReplyable = live, canOpenChat = !number.isNullOrBlank())
+    }
+
+    /** Fire a message job. Every outcome is reported; nothing is silently dropped. */
+    suspend fun fireMessage(ctx: Context, row: ReminderRow) {
+        val live = com.voicedock.ai.notify.RemoteReply.find(row.target)
+        if (live != null) {
+            val err = com.voicedock.ai.notify.RemoteReply.send(ctx, live, row.text)
+            if (err == null) {
+                notifySimple(
+                    ctx, row,
+                    tr("✓ ‘${row.target}’ কে পাঠানো হয়েছে", "✓ sent to ‘${row.target}’"),
+                    row.text,
+                )
+                return
+            }
+        }
+        val number = runCatching { com.voicedock.ai.telecom.ContactResolver(ctx).resolve(row.target).firstOrNull()?.number }.getOrNull()
+        if (!number.isNullOrBlank()) {
+            notifySimple(
+                ctx, row,
+                tr("‘${row.target}’ — চ্যাট খুলে ‘পাঠাও’ চাপুন", "‘${row.target}’ — open the chat and press send"),
+                row.text,
+                chatNumber = number,
+            )
+            return
+        }
+        notifySimple(
+            ctx, row,
+            tr("‘${row.target}’ কে পাঠানো যায়নি", "could not send to ‘${row.target}’"),
+            tr("নোটিফিকেশন অথবা কন্টাক্ট পাওয়া যায়নি — নিজে পাঠান: ${row.text}", "no live notification and no number — please send it yourself: ${row.text}"),
+        )
+    }
+
+    /**
+     * A fired job that is not a plain reminder gets its own notification: it reports what happened and,
+     * when a chat can be opened, carries that as the tap action.
+     */
+    private fun notifySimple(ctx: Context, row: ReminderRow, title: String, body: String, chatNumber: String? = null) {
+        val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        notifyChannel(ctx)
+        val open = if (chatNumber != null) {
+            PendingIntent.getActivity(
+                ctx, row.id.hashCode() + 7,
+                Intent(Intent.ACTION_VIEW, Uri.parse(com.voicedock.ai.jobs.MessageJobCore.whatsappUrl(chatNumber, row.text)))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        } else {
+            PendingIntent.getActivity(
+                ctx, 0, Intent(ctx, com.voicedock.ai.ui.MainActivity::class.java).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        }
+        val n = NotificationCompat.Builder(ctx, CHANNEL)
+            .setSmallIcon(R.drawable.ic_mic)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(open)
+            .addAction(0, tr("ঠিক আছে", "OK"),
+                PendingIntent.getBroadcast(
+                    ctx, row.id.hashCode() + 9,
+                    Intent(ctx, ReminderReceiver::class.java).setAction(ACTION_DONE).putExtra(EXTRA_ID, row.id),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                ))
+            .build()
+        runCatching { nm.notify(notifId(row.id) + 1, n) }
+    }
+
     suspend fun cancel(ctx: Context, id: String) {
         VoiceDock.db(ctx).reminders().setStatus(id, ReminderStatus.CANCELLED)
         alarm(ctx, id)?.let { (ctx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager)?.cancel(it) }
@@ -215,7 +316,11 @@ class ReminderReceiver : BroadcastReceiver() {
                     Reminders.ACTION_FIRE -> {
                         val row = VoiceDock.db(app).reminders().get(id) ?: return@launch
                         if (row.status == ReminderStatus.PENDING) {
-                            Reminders.post(app, row)
+                            if (row.kind == com.voicedock.ai.jobs.MessageJobCore.KIND_MESSAGE) {
+                                Reminders.fireMessage(app, row)
+                            } else {
+                                Reminders.post(app, row)
+                            }
                             // Armed again: the row stays pending until the user marks it done, so a missed
                             // notification is still visible in Settings instead of disappearing.
                             VoiceDock.db(app).reminders().setStatus(id, ReminderStatus.DONE)

@@ -56,6 +56,12 @@ that silently does nothing.
 * `web.search` with a user-supplied key: Brave Search API, Tavily, or a self-hosted SearxNG URL. Answer is
   a short summary of the top results through the existing free-first AI router, with the sources listed.
 
+## v1.2.1 — **SHIPPED 2026-11-01** — scheduled messages + search
+
+See `V1.2.1-CHANGES.md`. Internet search landed with Brave/Tavily/SearxNG; the YouTube **search** half landed
+too (picking the first video did not — that is the v1.3 accessibility pass). Scheduled messages ship with three
+honest delivery routes and no `SEND_SMS`.
+
 ## v1.3.0 — "কথা ও কনটেন্ট বোঝা" (social + content summaries)
 
 * **WhatsApp summaries**: the notification log (v0.8) already gives sender + text for every message; add a

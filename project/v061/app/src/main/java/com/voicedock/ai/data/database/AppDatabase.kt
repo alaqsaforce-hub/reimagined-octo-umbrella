@@ -1,6 +1,7 @@
 package com.voicedock.ai.data.database
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -79,6 +80,10 @@ data class ReminderRow(
     val status: ReminderStatus,
     /** "voice" / "text" / "notification" — where it came from, for the log and for debugging. */
     val source: String = "",
+    /** v1.2.1 — "reminder" (speak up) or "message" (send [text] to [target]). */
+    @ColumnInfo(defaultValue = "'reminder'") val kind: String = "reminder",
+    /** Who the message goes to (a contact name as spoken). Empty for a plain reminder. */
+    @ColumnInfo(defaultValue = "''") val target: String = "",
 )
 
 @Dao
@@ -120,7 +125,7 @@ interface ReminderDao {
         DictationDraft::class, KbDocument::class, KbChunk::class, KbChunkFts::class,
         MemoryRow::class, NotifRow::class, ReminderRow::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -188,5 +193,18 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    /**
+     * v1.2.1: a scheduled row can also carry a message to send. Two nullable-free columns with explicit
+     * DEFAULTs, so an existing reminder upgrades as `kind = 'reminder'` rather than losing its meaning.
+     */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            listOf(
+                "ALTER TABLE `reminders` ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'reminder'",
+                "ALTER TABLE `reminders` ADD COLUMN `target` TEXT NOT NULL DEFAULT ''",
+            ).forEach { db.execSQL(it) }
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

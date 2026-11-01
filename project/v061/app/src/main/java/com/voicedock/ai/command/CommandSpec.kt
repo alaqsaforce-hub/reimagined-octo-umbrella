@@ -32,6 +32,10 @@ enum class Intent(val id: String) {
     // v1.2.0: scheduled jobs — the first kind is a spoken reminder.
     REMINDER_ADD("reminder.add"),
     REMINDER_LIST("reminder.list"),
+    // v1.2.1: send a message later, search the internet, search YouTube.
+    MSG_SCHEDULE("msg.schedule"),
+    WEB_SEARCH("web.search"),
+    YT_SEARCH("yt.search"),
     UNKNOWN("unknown");
 
     companion object {

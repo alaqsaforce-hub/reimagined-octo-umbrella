@@ -80,7 +80,7 @@ object TimeWords {
     private val periodEn = listOf("morning" to Period.MORNING, "noon" to Period.NOON, "afternoon" to Period.AFTERNOON,
         "evening" to Period.EVENING, "night" to Period.NIGHT)
 
-    private enum class Period { EARLY, MORNING, NOON, AFTERNOON, EVENING, NIGHT }
+    enum class Period { EARLY, MORNING, NOON, AFTERNOON, EVENING, NIGHT }
 
     /** null when the sentence carries no usable time. */
     fun parse(text: String, nowMillis: Long, zone: ZoneId = ZoneId.systemDefault()): TimeGuess? {
@@ -113,8 +113,11 @@ object TimeWords {
             ?: periodEn.firstOrNull { t.contains(it.first) }?.second
         val explicitPeriod = period != null || t.contains("am") || t.contains("pm") || t.contains("রাতে")
 
-        // 4 — clock
-        val (rawHour, minute) = clock(t) ?: return null
+        // 4 — clock. "রাতে" / "সন্ধ্যায়" without a number means the usual hour for that period; the
+        // answer always prints the resolved time, so the convention is stated, never hidden.
+        val clockHit = clock(t)
+        if (clockHit == null && period == null) return null
+        val (rawHour, minute) = clockHit ?: (defaultHour(period!!) to 0)
         val resolved = resolveHour(rawHour, minute, period, am = t.contains("am"), pm = t.contains("pm"))
         val nowZ = ZonedDateTime.ofInstant(Instant.ofEpochMilli(nowMillis), zone)
         val day = nowZ.toLocalDate().plusDays(dayOffset.toLong())
@@ -165,6 +168,17 @@ object TimeWords {
             }
         }
         return Resolved(out, minute.coerceIn(0, 59))
+    }
+
+    /** The hour a bare period word means, in the way people actually use it. */
+    fun defaultHour(period: Period?): Int = when (period) {
+        Period.EARLY -> 5
+        Period.MORNING -> 9
+        Period.NOON -> 13
+        Period.AFTERNOON -> 16
+        Period.EVENING -> 19
+        Period.NIGHT -> 21
+        null -> 9
     }
 
     private fun relative(nowMillis: Long, delta: Long, matched: String): TimeGuess? {

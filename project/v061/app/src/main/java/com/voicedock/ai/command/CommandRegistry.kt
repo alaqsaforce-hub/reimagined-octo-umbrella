@@ -37,6 +37,11 @@ object CommandRegistry {
         // v1.2.0: a reminder is harmless (it only speaks later), so it never asks for confirmation.
         Intent.REMINDER_ADD to IntentMeta(setOf(Slot.TEXT, Slot.TIME), false, true, "মনে করিয়ে দেওয়া", "Set a reminder"),
         Intent.REMINDER_LIST to IntentMeta(emptySet(), false, true, "রিমাইন্ডারের তালিকা", "List reminders"),
+        // v1.2.1: sending cannot be taken back, so a scheduled message confirms once — and only then.
+        Intent.MSG_SCHEDULE to IntentMeta(setOf(Slot.CONTACT, Slot.TEXT, Slot.TIME), true, true,
+            "সময়মতো মেসেজ পাঠানো", "Send a message later"),
+        Intent.WEB_SEARCH to IntentMeta(setOf(Slot.QUERY), false, true, "ইন্টারনেটে খোঁজা", "Search the internet"),
+        Intent.YT_SEARCH to IntentMeta(setOf(Slot.QUERY), false, true, "ইউটিউবে খোঁজা", "Search YouTube"),
         Intent.UNKNOWN to IntentMeta(setOf(Slot.QUERY), false, false, "বোঝা যায়নি", "Not understood"),
     )
 

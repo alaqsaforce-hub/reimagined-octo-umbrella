@@ -123,6 +123,12 @@ object CommandPipeline {
                 "remind you to ‘${spec.slot(Slot.TEXT).orEmpty()}’ — ${spec.slot(Slot.TIME).orEmpty()}",
             )
             Intent.REMINDER_LIST -> bn("রিমাইন্ডারগুলোর তালিকা দেখাবে", "list your reminders")
+            Intent.MSG_SCHEDULE -> bn(
+                "${spec.slot(Slot.TIME).orEmpty()} ‘${spec.slot(Slot.CONTACT).orEmpty()}’ কে পাঠাবে: “${spec.slot(Slot.TEXT).orEmpty().take(60)}”",
+                "send ‘${spec.slot(Slot.CONTACT).orEmpty()}’ at ${spec.slot(Slot.TIME).orEmpty()}: “${spec.slot(Slot.TEXT).orEmpty().take(60)}”",
+            )
+            Intent.WEB_SEARCH -> bn("‘${spec.slot(Slot.QUERY).orEmpty()}’ খুঁজবে", "search for ‘${spec.slot(Slot.QUERY).orEmpty()}’")
+            Intent.YT_SEARCH -> bn("ইউটিউবে ‘${spec.slot(Slot.QUERY).orEmpty()}’ খুঁজবে", "search YouTube for ‘${spec.slot(Slot.QUERY).orEmpty()}’")
             Intent.UNKNOWN -> bn("কিছু না", "nothing")
         }
     }

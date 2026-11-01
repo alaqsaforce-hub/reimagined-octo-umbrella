@@ -45,7 +45,12 @@ import com.voicedock.ai.insertion.ClipboardInsertion
 import com.voicedock.ai.insertion.InsertAccessibilityService
 import com.voicedock.ai.insertion.TextInserter
 import com.voicedock.ai.permissions.Permissions
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
+import com.voicedock.ai.search.SearchClient
+import com.voicedock.ai.search.SearchCore
+import com.voicedock.ai.search.YouTubeSearch
 import com.voicedock.ai.schedule.Reminders
 import com.voicedock.ai.schedule.TimeWords
 import com.voicedock.ai.settings.SettingsStore
@@ -114,6 +119,12 @@ import kotlin.math.abs
  * without an explicit user tap on "Insert here".
  */
 class AssistantOverlayService : LifecycleService() {
+
+    /**
+     * v1.2.1 — commands are executed on the main thread, but a search or an AI summary takes seconds.
+     * Work that can be slow runs on this scope (IO inside), and the answer is delivered back on Main.
+     */
+    private val workScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private lateinit var wm: WindowManager
     private var bubble: ImageView? = null
@@ -705,6 +716,8 @@ class AssistantOverlayService : LifecycleService() {
             // v0.10.0: "গান" alone is ambiguous between play and pause — offer the actions, never guess.
             spec.intent == CmdIntent.MEDIA && spec.slot(Slot.MEDIA).isNullOrBlank() -> mapOf(Slot.MEDIA to MediaText.choices())
             // v1.2.0: "কখন?" gets three real examples instead of an empty card.
+            spec.intent == CmdIntent.MSG_SCHEDULE && spec.slot(Slot.TIME).isNullOrBlank() ->
+                mapOf(Slot.TIME to listOf("সন্ধ্যা ৭টায়", "রাতে", "২০ মিনিট পরে"))
             spec.intent == CmdIntent.REMINDER_ADD && spec.slot(Slot.TIME).isNullOrBlank() ->
                 mapOf(Slot.TIME to listOf("৩টায়", "সন্ধ্যা ৭টায়", "২০ মিনিট পরে"))
             spec.intent == CmdIntent.APP_LAUNCH && spec.slot(Slot.APP).isNullOrBlank() -> emptyMap()
@@ -1028,6 +1041,66 @@ class AssistantOverlayService : LifecycleService() {
                         if (!Permissions.notifications(this)) _dict.value = _dict.value.copy(needsSetup = true)
                     }
                 }
+            }
+
+            CmdIntent.MSG_SCHEDULE -> {
+                val target = spec.slot(Slot.CONTACT).orEmpty()
+                val body = spec.slot(Slot.TEXT).orEmpty()
+                val timeText = spec.slot(Slot.TIME) ?: spec.raw
+                val now = System.currentTimeMillis()
+                val guess = TimeWords.parse(timeText, now)
+                when {
+                    target.isBlank() || body.isBlank() ->
+                        done(tr("কাকে কী পাঠাব, ঠিক বুঝিনি — আবার বলুন।", "I did not catch who and what — say it again."), false, "msgsched:slots")
+                    guess == null ->
+                        done(tr("কখন পাঠাব ঠিক বুঝিনি — ‘সন্ধ্যা ৭টায়’ বা ‘২০ মিনিট পরে’ বলুন।", "I did not catch the time — say ‘at 7 pm’ or ‘in 20 minutes’."), false, "msgsched:no_time")
+                    else -> {
+                        val plan = Reminders.planFor(this, target)
+                        val row = runCatching {
+                            runBlocking(Dispatchers.IO) { Reminders.addMessage(this@AssistantOverlayService, target, body, guess.atMillis, source) }
+                        }.getOrNull()
+                        if (row == null) {
+                            done(tr("মেসেজের সময়সূচি সেভ করা যায়নি।", "Could not save the scheduled message."), false, "msgsched:save")
+                        } else {
+                            val whenText = TimeWords.label(row.triggerAt, now, bn)
+                            val msg = com.voicedock.ai.jobs.MessageJobCore.scheduledText(target, body, whenText, plan, bn)
+                            done(msg, true, "msgsched:add")
+                            if (SettingsStore.state.value.speakResults) speaker.speak(msg, bn)
+                        }
+                    }
+                }
+            }
+
+            CmdIntent.WEB_SEARCH -> {
+                val q = spec.slot(Slot.QUERY).orEmpty().ifBlank { spec.raw }
+                if (!SearchClient.configured(this)) {
+                    // No provider: the browser is a real answer, and the text says what is missing.
+                    SearchClient.openBrowser(this, q)
+                    done(SearchCore.browserHint(q, bn), true, "search:browser")
+                } else {
+                    done(tr("‘$q’ খুঁজছি…", "Searching for ‘$q’…"), true, "search:start")
+                    workScope.launch {
+                        val out = withContext(Dispatchers.IO) { SearchClient.run(this@AssistantOverlayService, q) }
+                        if (!out.ok) {
+                            done(SearchClient.explain(out.reason, bn), false, "search:${out.reason}")
+                        } else {
+                            val summary = runCatching {
+                                AiSetup.router(this@AssistantOverlayService)
+                                    .complete(SearchCore.prompt(q, out.hits, bn), listOf(com.voicedock.ai.ai.ChatMessage.user(q)))
+                                    .text.trim()
+                            }.getOrNull()
+                            val text = (summary?.takeIf { it.isNotBlank() } ?: SearchCore.digest(out.hits)) + SearchCore.sourcesLine(out.hits, bn)
+                            done(text, true, if (summary != null) "search:ai" else "search:raw")
+                            if (SettingsStore.state.value.speakResults) speaker.speak(summary ?: SearchCore.emptyText(bn), bn)
+                        }
+                    }
+                }
+            }
+
+            CmdIntent.YT_SEARCH -> {
+                val q = spec.slot(Slot.QUERY).orEmpty().ifBlank { spec.raw }
+                val inApp = YouTubeSearch.open(this, q)
+                done(YouTubeSearch.answer(q, inApp, bn), true, "yt:search")
             }
 
             CmdIntent.REMINDER_LIST -> {

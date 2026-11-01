@@ -104,7 +104,12 @@ object CommandParser {
                     if (first.isNotBlank()) { who = first; body = body.removePrefix(first).trim() }
                 }
                 if (who.isNotBlank() && body.isNotBlank()) {
-                    return spec(Intent.MSG_REPLY, 0.9, Slot.CONTACT to com.voicedock.ai.notify.SenderMatch.cleanName(who), Slot.TEXT to body)
+                    val contact = com.voicedock.ai.notify.SenderMatch.cleanName(who)
+                    // v1.2.1 — a stated time turns "tell them" into "tell them later".
+                    if (TimeWords.parse(raw, System.currentTimeMillis()) != null) {
+                        return spec(Intent.MSG_SCHEDULE, 0.9, Slot.CONTACT to contact, Slot.TEXT to body, Slot.TIME to raw)
+                    }
+                    return spec(Intent.MSG_REPLY, 0.9, Slot.CONTACT to contact, Slot.TEXT to body)
                 }
             }
         }
@@ -125,6 +130,19 @@ object CommandParser {
             // "রহিমকে ফোন করো" leaves only the vowel sign of "করো" behind — that is not a name.
             val who = if (meaningful(after)) after else beforeAny(raw, low, "ফোন কর", "ফোন দাও", "কল কর", "call")
             return spec(Intent.CALL_PLACE, 0.9, Slot.CONTACT to who)
+        }
+        // --- YouTube search (v1.2.1): before the generic web search, so "ইউটিউবে …" stays on YouTube. ---
+        if ((low.contains("ইউটিউব") || low.contains("youtube")) &&
+            containsAny(low, "খোঁজো", "খুঁজে", "সার্চ", "search")) {
+            val q = afterAny(raw, low, "ইউটিউবে", "youtube এ", "youtube", "খোঁজো", "খুঁজে দাও", "সার্চ করো", "search")
+                .ifBlank { beforeAny(raw, low, "ইউটিউবে", "youtube", "খোঁজো", "search") }
+            return spec(Intent.YT_SEARCH, 0.9, Slot.QUERY to searchQuery(q).ifBlank { searchQuery(raw) })
+        }
+        // --- internet search (v1.2.1) ---
+        if (containsAny(low, "সার্চ কর", "সার্চ দাও", "সার্চ করে", "খুঁজে দাও", "খোঁজো", "search for", "search the web", "গুগলে", "google ")) {
+            val q = afterAny(raw, low, "সার্চ করো", "সার্চ কর", "সার্চ দাও", "সার্চ করে", "খুঁজে দাও", "খোঁজো", "search for", "search the web", "search", "গুগলে", "google")
+                .ifBlank { beforeAny(raw, low, "সার্চ করো", "সার্চ কর", "খুঁজে দাও", "খোঁজো", "search", "গুগলে", "google") }
+            return spec(Intent.WEB_SEARCH, 0.88, Slot.QUERY to searchQuery(q).ifBlank { searchQuery(raw) })
         }
         // --- messages (v0.8) ---
         if (containsAny(low, "সারমর্ম", "কে কে মেসেজ", "কে মেসেজ দিয়েছে", "মেসেজ দিয়েছে", "summarise", "summarize", "digest")) {
@@ -214,6 +232,14 @@ object CommandParser {
     }
 
     /** "হোয়াটসঅ্যাপ অ্যাপটা" → "হোয়াটসঅ্যাপ"; quotes and filler words removed. */
+    /** Removes the search scaffolding so the query is only what the user wants to know about. */
+    fun searchQuery(q: String): String {
+        var s = q
+        listOf("গুগলে", "গুগল", "google", "ইউটিউবে", "youtube", "সার্চ", "search", "খোঁজো", "খুঁজে", "দাও", "করো", "কর", "for", "the web", "internet", "একটু")
+            .forEach { key -> s = s.replace(key, " ", ignoreCase = true) }
+        return s.replace(Regex("\\s+"), " ").trim().trim('।', ',', '?', '!', ' ')
+    }
+
     fun cleanAppQuery(q: String): String = normalize(q)
         .replace(Regex("(?i)\\b(the|app|application|টা|টি|অ্যাপটা|অ্যাপটি|অ্যাপ|please|একটু|দয়া করে)\\b"), " ")
         .replace(Regex("\\s+"), " ")

@@ -282,3 +282,39 @@ Setup: floating icon visible, Accessibility on, anything else open (e.g. the hom
     the same instead of storing a broken reminder.
 17. Say "আমার রিমাইন্ডার দেখাও" → a spoken + written list of what is coming.
 18. Without the exact-alarm access: create one → the answer itself must say "কয়েক মিনিট দেরি হতে পারে".
+
+---
+
+## v1.2.1 — scheduled messages and search
+
+**Scheduled message — the silent path (needs a live WhatsApp notification)**
+1. Have an unanswered WhatsApp message so its notification is on screen. Say
+   **"সন্ধ্যা ৭টায় রহিমকে বলো আমি কাল আসব"**. The confirmation must name the time, the person, the text **and**
+   say the message will go "নোটিফিকেশনের ভেতর দিয়েই". Tap হ্যাঁ.
+2. Keep that notification alive until 19:00. At 19:00 the chat must receive the text **without** you opening
+   WhatsApp, and a ✓ notification must appear.
+3. Do it again but swipe the WhatsApp notification away before 19:00 → at 19:00 the notification must say
+   "চ্যাট খুলে ‘পাঠাও’ চাপুন", and tapping it must open that chat with the text already typed.
+
+**Scheduled message — the honest failure**
+4. Use a person with no live notification and no phone number in contacts → the fired notification must say it
+   could not be sent, with the text, so nothing is lost.
+
+**Listing and cancelling**
+5. Settings → রিমাইন্ডার must show `আজ সন্ধ্যা ৭:০০ → রহিম` with the message under it and the delivery path
+   ("পাঠানোর পথ এখন: …"). **বাতিল** must stop it — no notification at 19:00.
+
+**Time grammar**
+6. Say **"রাতে মনে করিয়ে দাও পানি খেতে"** → must schedule **আজ রাত ৯:০০** (and say so), not ask again.
+   Same for "সন্ধ্যায়", "সকালে", "দুপুরে", "বিকালে".
+7. Say **"রহিমকে বলো আমি আসছি"** (no time) → must send **now** as a normal reply, not schedule anything.
+
+**Search**
+8. With no search provider: say **"গুগলে আজকের আবহাওয়া খোঁজো"** → the browser must open with that query and the
+   answer must say a provider can be added for a summary.
+9. Add a Brave key (Settings → সার্চ → টেস্ট সার্চ) → ✓ with a real headline. Then ask the same thing → a
+   3–4 sentence Bengali summary plus a "সূত্র" list of links. A wrong key must show "key ভুল বা মেয়াদোত্তীর্ণ".
+10. Self-hosted SearxNG: paste `192.168.0.4:8888` (no http://) → test must pass. Stop the container → the
+    answer must say the search server timed out / cannot be reached, not "no results".
+11. Say **"ইউটিউবে রবীন্দ্রসংগীত খোঁজো"** → the YouTube app (or browser) must open on those results and the
+    answer must tell you to tap the first video — it must not claim it played anything.

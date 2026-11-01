@@ -73,6 +73,10 @@ data class AppSettings(
     /** Base URL for the Custom OpenAI-compatible provider (e.g. http://192.168.0.10:11434/v1).
      *  Only loopback/LAN hosts may use http:// (see network_security_config.xml + AiPolicy). */
     val customAiUrl: String = "",
+
+    /** v1.2.1 — internet search: "none" opens the browser, the others need a key or a self-hosted URL. */
+    val searchProvider: String = "none",
+    val searxUrl: String = "",
     /** Last Mode B style. */
     val formatStyle: String = "CLEAN",
     /** Gmail IMAP address (the app password is in SecretStore). */

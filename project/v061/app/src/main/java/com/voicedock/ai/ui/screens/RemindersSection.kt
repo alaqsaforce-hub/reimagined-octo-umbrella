@@ -57,8 +57,8 @@ fun RemindersSection(resumeTick: Int) {
     Text(tr("রিমাইন্ডার", "Reminders"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
     Text(
         tr(
-            "বলুন: “৩টায় মনে করিয়ে দাও পানি খেতে” · “কাল সকাল ৯টায় মনে করিয়ে দাও” · “২০ মিনিট পরে মনে করিয়ে দাও”",
-            "Say: “remind me at 3 to drink water” · “remind me tomorrow at 9” · “remind me in 20 minutes”",
+            "বলুন: “৩টায় মনে করিয়ে দাও পানি খেতে” · “কাল সকাল ৯টায় মনে করিয়ে দাও” · “সন্ধ্যা ৭টায় রহিমকে বলো আমি কাল আসব”",
+            "Say: “remind me at 3 to drink water” · “remind me tomorrow at 9” · “at 7 pm tell Rahim I will come tomorrow”",
         ),
         style = MaterialTheme.typography.bodySmall,
     )
@@ -96,10 +96,21 @@ fun RemindersSection(resumeTick: Int) {
             modifier = Modifier.padding(top = 4.dp),
         ) {
             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                val isMessage = row.kind == com.voicedock.ai.jobs.MessageJobCore.KIND_MESSAGE
                 Text(
-                    TimeWords.label(row.triggerAt, System.currentTimeMillis(), bn) + " — " + row.text,
+                    TimeWords.label(row.triggerAt, System.currentTimeMillis(), bn) +
+                        if (isMessage) " → ${row.target}" else " — " + row.text,
                     style = MaterialTheme.typography.labelLarge,
                 )
+                if (isMessage) {
+                    Text("“${row.text}”", style = MaterialTheme.typography.labelMedium)
+                    val plan = Reminders.planFor(ctx, row.target)
+                    Text(
+                        tr("পাঠানোর পথ এখন: ${plan.noteBn}", "Delivery right now: ${plan.noteEn}"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
                 val plan = AlarmPlanner.plan(System.currentTimeMillis(), row.triggerAt, exact)
                 if (plan != null && !plan.exact) {
                     Text(

@@ -169,6 +169,71 @@ class RoomPersistenceTest {
         ctx.deleteDatabase(name)
     }
 
+    /**
+     * v1.2.1 — the real v4 → v5 upgrade: existing reminders must keep working and gain
+     * `kind = 'reminder'`, and a message job must be storable straight after the migration.
+     */
+    @Test fun migration4To5KeepsRemindersAndAddsMessageJobs() {
+        val name = "migrate-4-5.db"
+        ctx.deleteDatabase(name)
+        val file = ctx.getDatabasePath(name)
+        file.parentFile?.mkdirs()
+
+        val legacy = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(file, null)
+        listOf(
+            "CREATE TABLE IF NOT EXISTS `dictation_drafts` (`id` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `rawText` TEXT NOT NULL, `formattedText` TEXT NOT NULL, `segmentsJson` TEXT NOT NULL, `status` TEXT NOT NULL, `language` TEXT NOT NULL, `engine` TEXT NOT NULL, `destination` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_dictation_drafts_status` ON `dictation_drafts` (`status`)",
+            "CREATE INDEX IF NOT EXISTS `index_dictation_drafts_updatedAt` ON `dictation_drafts` (`updatedAt`)",
+            "CREATE TABLE IF NOT EXISTS `kb_documents` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `source` TEXT NOT NULL, `sourceRef` TEXT NOT NULL, `mime` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `charCount` INTEGER NOT NULL, `contentHash` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_kb_documents_updatedAt` ON `kb_documents` (`updatedAt`)",
+            "CREATE INDEX IF NOT EXISTS `index_kb_documents_contentHash` ON `kb_documents` (`contentHash`)",
+            "CREATE TABLE IF NOT EXISTS `kb_chunks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `docId` TEXT NOT NULL, `ord` INTEGER NOT NULL, `text` TEXT NOT NULL)",
+            "CREATE INDEX IF NOT EXISTS `index_kb_chunks_docId` ON `kb_chunks` (`docId`)",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS `kb_chunks_fts` USING FTS4(`text` TEXT NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS `memory_entries` (`id` TEXT NOT NULL, `text` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `source` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_memory_entries_createdAt` ON `memory_entries` (`createdAt`)",
+            "CREATE TABLE IF NOT EXISTS `notif_entries` (`key` TEXT NOT NULL, `pkg` TEXT NOT NULL, `appLabel` TEXT NOT NULL, `sender` TEXT NOT NULL, `text` TEXT NOT NULL, `at` INTEGER NOT NULL, `canReply` INTEGER NOT NULL, `summary` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+            "CREATE INDEX IF NOT EXISTS `index_notif_entries_at` ON `notif_entries` (`at`)",
+            "CREATE INDEX IF NOT EXISTS `index_notif_entries_sender` ON `notif_entries` (`sender`)",
+            "CREATE TABLE IF NOT EXISTS `reminders` (`id` TEXT NOT NULL, `text` TEXT NOT NULL, `triggerAt` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `status` TEXT NOT NULL, `source` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_reminders_triggerAt` ON `reminders` (`triggerAt`)",
+            "CREATE INDEX IF NOT EXISTS `index_reminders_status` ON `reminders` (`status`)",
+        ).forEach { legacy.execSQL(it) }
+        legacy.execSQL(
+            "INSERT INTO reminders (id, text, triggerAt, createdAt, status, source) " +
+                "VALUES ('old', 'পানি খেতে', 2000, 1000, 'PENDING', 'voice')",
+        )
+        legacy.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY, identity_hash TEXT)")
+        legacy.execSQL("INSERT OR REPLACE INTO room_master_table (id, identity_hash) VALUES (42, '833bedb434685d11e23dbf36b5e512f9')")
+        legacy.version = 4
+        legacy.close()
+
+        val db = Room.databaseBuilder(ctx, AppDatabase::class.java, name)
+            .addMigrations(*Migrations.ALL)
+            .allowMainThreadQueries()
+            .build()
+
+        runBlocking {
+            val old = db.reminders().get("old")!!
+            assertEquals("পানি খেতে", old.text)
+            assertEquals("a pre-v5 reminder becomes a reminder, not a message", "reminder", old.kind)
+            assertEquals("", old.target)
+
+            db.reminders().upsert(
+                com.voicedock.ai.data.database.ReminderRow(
+                    "job1", "আমি কাল আসব", 9_000L, 1_000L,
+                    com.voicedock.ai.data.database.ReminderStatus.PENDING, "voice",
+                    kind = com.voicedock.ai.jobs.MessageJobCore.KIND_MESSAGE, target = "রহিম",
+                ),
+            )
+            val job = db.reminders().get("job1")!!
+            assertEquals("রহিম", job.target)
+            assertEquals(listOf("old", "job1"), db.reminders().pending().map { it.id })
+        }
+        db.close()
+        ctx.deleteDatabase(name)
+    }
+
     /** v0.10.0 — the v0.7-v0.9 JSON files are copied into Room exactly once and never lost. */
     @Test fun legacyJsonIsImportedOnceAndKeptOnDisk() {
         val dir = File(ctx.filesDir, "legacy-import-test").apply { deleteRecursively(); mkdirs() }

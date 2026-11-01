@@ -489,3 +489,31 @@ Device checks (18) are in `MANUAL-TESTS-v0.6.md` § v1.2.0 — 11 and 14 cannot 
 
 **Next:** v1.2.1 — scheduled messages (SMS auto-send + WhatsApp "open and send" with an honest limit) and
 internet search; then v1.3.0 calendar + YouTube.
+
+---
+
+## v1.2.1 "সময়মতো পাঠাও, আর খুঁজে নাও" (built & verified 2026-11-01)
+
+The two items carried forward from v1.2.0, both of which were withheld there for honest reasons.
+
+* **Scheduled messages** — `সন্ধ্যা ৭টায় রহিমকে বলো আমি কাল আসব`. Stored in the existing `reminders` row with
+  `kind`/`target` (Room **v5**, `MIGRATION_4_5`), so it survives a reboot and is listed/cancellable in Settings.
+  Three delivery routes, decided **before** the moment and stated in the confirmation and again when it fires:
+  Direct Reply (silent, only with a live notification) → open the chat pre-filled (`wa.me`) → "could not send,
+  here is the text". No `SEND_SMS` permission was added; an unseen SMS is not worth a Play-policy restriction.
+* **Search** — Brave / Tavily with the user's own key, or a self-hosted SearxNG (URL repaired like a local
+  model address). Top-5 snippets → AI summary → **sources listed**. With nothing configured the browser opens
+  and the answer says what to add. No scraping of Google/Bing, by design.
+* **YouTube search** — official search intent with a browser fallback; the answer still says "প্রথম ভিডিওতে
+  চাপ দিন", because picking it needs the v1.3 accessibility pass.
+* **One grammar rule** — a bare period word resolves to its usual hour (ভোর ৫ · সকাল ৯ · দুপুর ১ · বিকাল ৪ ·
+  সন্ধ্যা ৭ · রাত ৯) and the resolved time is always printed.
+
+**Status:** **436 tests / 0 failures / 55 suites** (21 new, incl. a real v4→v5 migration), lint
+**0 errors / 48 warnings** (5 new, all `UseKtx`), APK `versionCode 21 / 1.2.1`, minSdk 26, v2-signed,
+16 KB-aligned, 19,031,639 B. Device checks: 11 in `MANUAL-TESTS-v0.6.md` § v1.2.1 — 1, 3 and 9 are the ones
+that decide whether the promise holds.
+
+**Next:** v1.3.0 — WhatsApp/chat summaries from the notification log, YouTube link summary via captions,
+calendar (read + add with confirmation), and the accessibility pass that makes a scheduled message truly silent
+even without a live notification.
