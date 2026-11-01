@@ -1,5 +1,21 @@
 # GitHub-এ পুশ করার গাইড (v1.3.4)
 
+> **✅ হয়ে গেছে (২০২৬-১১-০১):** কোড এখন
+> <https://github.com/alaqsaforce-hub/reimagined-octo-umbrella> — `main`, ২২ কমিট, HEAD `f0b16ac`।
+> অ্যাকাউন্ট: **`alaqsaforce-hub`** (এই অ্যাকাউন্টের টোকেনই লাগে; অন্য অ্যাকাউন্টে ৪০৩)।
+> টোকেন শুধু push-এর মুহূর্তে remote URL-এ ছিল, পরে `git remote set-url` দিয়ে সরানো হয়েছে
+> (`.git/config`-এ `github_pat` ম্যাচ = ০)। **চ্যাটে দেওয়া টোকেনটা GitHub-এ গিয়ে revoke করে দিন।**
+>
+> পরের বার (একই সেশনে টোকেন আবার দিলে):
+> ```bash
+> git remote add origin https://alaqsaforce-hub:<TOKEN>@github.com/alaqsaforce-hub/reimagined-octo-umbrella.git
+> git push origin main
+> git remote set-url origin https://github.com/alaqsaforce-hub/reimagined-octo-umbrella.git
+> ```
+> Sandbox-এ credential ফাইল snapshot থেকে বাদ যায়, তাই প্রতি সেশনে টোকেন আবার লাগবে।
+
+## পুরোনো অবস্থা (কেন প্রথমে পুশ হচ্ছিল না)
+
 ## কেন পুশ হচ্ছিল না — আসল কারণ (যাচাই করা)
 
 ```

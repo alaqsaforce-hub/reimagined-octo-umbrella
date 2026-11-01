@@ -1,0 +1,14 @@
+# build outputs
+build/
+*/build/
+**/build/
+.gradle/
+**/.gradle/
+.cxx/
+**/.cxx/
+# local machine config (contains absolute SDK path)
+local.properties
+# Android SDK cache accidentally tracked in early commits
+.android/
+# scratch
+*.log
