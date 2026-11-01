@@ -36,6 +36,11 @@ object CommandPipeline {
          * step 2 ("understood, but not in this version") stays covered now that every intent ships.
          */
         isAvailable: (Intent) -> Boolean = CommandRegistry::isAvailable,
+        /**
+         * v1.4.1 — the app decides per *command*, not just per intent: `mcp.run` confirms only when the tool is
+         * not read-only. Tests keep the old behaviour by using the default.
+         */
+        needsConfirm: (Intent, CommandSpec) -> Boolean = { i, _ -> CommandRegistry.isDestructive(i) },
     ): CommandDecision {
         fun bn(b: String, e: String) = if (bengali) b else e
 
@@ -85,7 +90,7 @@ object CommandPipeline {
         }
 
         // 4 — irreversible: always confirm once
-        if (CommandRegistry.isDestructive(spec.intent)) {
+        if (needsConfirm(spec.intent, spec)) {
             val describe = describe(spec, bengali)
             return CommandDecision.Confirm(
                 question = bn("নিশ্চিত? $describe", "Are you sure? $describe"),

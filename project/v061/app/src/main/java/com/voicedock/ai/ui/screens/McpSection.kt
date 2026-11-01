@@ -104,8 +104,16 @@ fun McpSection() {
                         val out = withContext(Dispatchers.IO) { McpClient.connect(sv, t) }
                         testing = null
                         status = if (out.ok) {
-                            if (bn) "✓ ${out.tools.size}টি টুল: ${out.tools.take(6).joinToString(", ") { it.name }}"
-                            else "✓ ${out.tools.size} tools: ${out.tools.take(6).joinToString(", ") { it.name }}"
+                            val head = if (bn) {
+                                "✓ ${out.serverName.ifBlank { sv.label }} — ${out.tools.size}টি টুল " +
+                                    "(${out.tools.count { !it.needsConfirm }}টি পড়া-মাত্র)"
+                            } else {
+                                "✓ ${out.serverName.ifBlank { sv.label }} — ${out.tools.size} tools " +
+                                    "(${out.tools.count { !it.needsConfirm }} read-only)"
+                            }
+                            head + "\n" + out.tools.take(8).joinToString("\n") {
+                                "• ${it.name} — ${McpCore.policyLabel(it, bn)}"
+                            }
                         } else {
                             McpCore.failure(out.reason, bn)
                         }
@@ -120,6 +128,31 @@ fun McpSection() {
             }) { Text(tr("মুছুন", "Remove"), color = MaterialTheme.colorScheme.error) }
         }
     }
+
+    Text(
+        tr(
+            "নীতি: সার্ভার যে টুলকে ‘readOnly’ বলে শুধু সেটাই বিনা প্রশ্নে চলে; লেখা/মোছার টুল এবং যে টুল " +
+                "নিজের সম্পর্কে কিছু বলে না — দুটোই আগে জিজ্ঞেস করে।",
+            "Policy: only a tool the server marks read-only runs without a question. Write tools — and any tool " +
+                "that says nothing about itself — ask first.",
+        ),
+        style = MaterialTheme.typography.labelSmall,
+    )
+
+    // v1.4.1 — the one server most people want, added with the official endpoint and its own token slot.
+    OutlinedButton(
+        enabled = servers.none { it.url.startsWith("https://api.githubcopilot.com") },
+        onClick = {
+            val made = McpCore.serverFrom("github", "https://api.githubcopilot.com/mcp/", tokenName = "mcp_token_github")
+            if (made != null) {
+                SettingsStore.update { st -> st.copy(mcpServers = McpCore.sanitize(st.mcpServers + made)) }
+                status = tr(
+                    "GitHub MCP যোগ হয়েছে — টোকেন দিন (নিচের ঘরে), তারপর ‘টুল দেখুন’।",
+                    "GitHub MCP added — enter a token below, then tap ‘List tools’.",
+                )
+            }
+        },
+    ) { Text(tr("GitHub MCP যোগ করুন (এক ট্যাপ)", "Add GitHub MCP (one tap)")) }
 
     OutlinedTextField(
         value = name, onValueChange = { name = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
@@ -141,7 +174,12 @@ fun McpSection() {
             if (made == null) {
                 status = McpCore.failure("no_url", bn)
             } else {
-                val tokenName = if (token.isBlank()) null else "mcp_token_${made.id}"
+                val tokenName = when {
+                    token.isBlank() -> null
+                    // Re-adding the GitHub preset must not orphan the slot it already points at.
+                    servers.any { it.url == made.url && it.tokenName == "mcp_token_github" } -> "mcp_token_github"
+                    else -> "mcp_token_${made.id}"
+                }
                 tokenName?.let { SecretStore.put(ctx, it, token) }
                 val withToken = made.copy(tokenName = tokenName)
                 SettingsStore.update { st -> st.copy(mcpServers = McpCore.sanitize(st.mcpServers + withToken)) }

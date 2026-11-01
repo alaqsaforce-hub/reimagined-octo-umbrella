@@ -167,8 +167,31 @@ object McpCore {
         val description: String = "",
         val props: List<String> = emptyList(),
         val required: List<String> = emptyList(),
+        /** `annotations.readOnlyHint` — the server's own promise that the tool changes nothing. */
+        val readOnly: Boolean = false,
+        /** `annotations.destructiveHint` — the server's own warning that it can destroy data. */
+        val destructive: Boolean = false,
+        /** `annotations.title` when the server provides a human title. */
+        val titleText: String = "",
     ) {
-        val title: String get() = if (description.isBlank()) name else "$name — ${description.take(70)}"
+        val title: String get() = titleText.ifBlank { if (description.isBlank()) name else "$name — ${description.take(70)}" }
+
+        /**
+         * v1.4.1 — the policy, in one place:
+         *  * a tool the server marks read-only and *not* destructive runs without a question;
+         *  * everything else (write tools, and **any tool that says nothing**) confirms first.
+         * Absence of annotations is not permission — a server that does not describe its tools is unknown,
+         * and unknown is treated as dangerous.
+         */
+        val needsConfirm: Boolean get() = !readOnly || destructive
+    }
+
+    /** `initialize` result → ("files-mcp", "0.4.1"), so the UI can name what it is talking to. */
+    fun serverInfo(reply: RpcReply?): Pair<String, String> {
+        val info = reply?.result?.get("serverInfo")?.let { runCatching { it.jsonObject }.getOrNull() }
+            ?: return "" to ""
+        return (info["name"]?.jsonPrimitive?.contentOrNull.orEmpty().take(40)) to
+            (info["version"]?.jsonPrimitive?.contentOrNull.orEmpty().take(20))
     }
 
     fun parseTools(reply: RpcReply, server: McpServer): List<McpTool> {
@@ -182,6 +205,9 @@ object McpCore {
             val required = (schema?.get("required") as? JsonArray)?.mapNotNull {
                 runCatching { it.jsonPrimitive.contentOrNull }.getOrNull()
             } ?: emptyList()
+            val annotations = o["annotations"]?.let { runCatching { it.jsonObject }.getOrNull() }
+            fun hint(key: String): Boolean =
+                annotations?.get(key)?.let { runCatching { it.jsonPrimitive.content.toBoolean() }.getOrNull() } ?: false
             McpTool(
                 serverId = server.id,
                 serverName = server.label,
@@ -189,6 +215,9 @@ object McpCore {
                 description = o["description"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                 props = props,
                 required = required,
+                readOnly = hint("readOnlyHint"),
+                destructive = hint("destructiveHint"),
+                titleText = annotations?.get("title")?.jsonPrimitive?.contentOrNull.orEmpty(),
             )
         }
     }
@@ -260,6 +289,13 @@ object McpCore {
         "No MCP server is configured. Add one in Settings → MCP (e.g. your own filesystem server)."
     }
 
+    /** "পড়া-মাত্র" / "লেখে — আগে জিজ্ঞেস করবে" — shown next to every tool so the policy is visible. */
+    fun policyLabel(tool: McpTool, bn: Boolean): String = when {
+        tool.readOnly && !tool.destructive -> if (bn) "পড়া-মাত্র" else "read-only"
+        tool.destructive -> if (bn) "ধ্বংসকারী — আগে জিজ্ঞেস করবে" else "destructive — asks first"
+        else -> if (bn) "অজানা — আগে জিজ্ঞেস করবে" else "unclassified — asks first"
+    }
+
     fun toolsAnswer(tools: List<McpTool>, bn: Boolean): String {
         if (tools.isEmpty()) return if (bn) {
             "সার্ভারের সাথে কথা হয়েছে, কিন্তু সে কোনো টুল দেয়নি।"
@@ -269,7 +305,10 @@ object McpCore {
         val byServer = tools.groupBy { it.serverName }
         val head = if (bn) "MCP টুল (${tools.size}টি):" else "MCP tools (${tools.size}):"
         val lines = byServer.entries.take(6).flatMap { (server, list) ->
-            listOf("• $server — ${list.size}টি") + list.take(8).map { "   ◦ ${it.name}" }
+            val ro = list.count { !it.needsConfirm }
+            listOf(
+                "• $server — ${list.size}টি" + (if (bn) " (পড়া-মাত্র $ro)" else " ($ro read-only)"),
+            ) + list.take(8).map { "   ◦ ${it.name} — ${policyLabel(it, bn)}" }
         }
         val tail = if (tools.size > 12 && bn) "\n(প্রথম কয়েকটা দেখানো হলো)" else ""
         return (listOf(head) + lines).joinToString("\n") + tail

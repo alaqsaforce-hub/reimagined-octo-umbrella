@@ -474,3 +474,16 @@ Needs Accessibility enabled for VoiceDock. 2, 3 and 5 decide whether the promise
    the answer lists the real tools.
 7. Turn airplane mode on and repeat step 1 → an honest "internet নেই" sentence, no crash, no fake list.
 8. Add a ninth server → the list stays at 8 (the cap is stated); remove one → it disappears immediately.
+
+## v1.4.1 — MCP tool policy
+
+1. Settings → MCP → **"GitHub MCP যোগ করুন (এক ট্যাপ)"** → the row appears with its own token slot; tap it
+   again → still one row (no duplicates).
+2. Put a GitHub PAT in the token box, tap **"টুল দেখুন"** → the answer names the server (e.g. `github-mcp-server`)
+   and marks each tool: `পড়া-মাত্র` or `ধ্বংসকারী/অজানা — আগে জিজ্ঞেস করবে`.
+3. Say **"mcp দিয়ে get_file_contents চালাও path=README.md"** → **no** confirmation card; the file text is shown.
+4. Say **"mcp দিয়ে create_or_update_file চালাও …"** → the confirmation card appears **before** anything is sent.
+5. Restart the app and repeat step 3 within a minute → a confirmation appears once (the in-memory list is gone),
+   then step 3 runs clean again after the next `টুল দেখুন`.
+6. Leave the app idle for 11+ minutes, then run a read-only tool → it confirms again (the snapshot expired).
+7. Point a server at an address that returns HTML → an honest "উত্তরটা JSON-RPC ফরম্যাটে ছিল না" sentence.

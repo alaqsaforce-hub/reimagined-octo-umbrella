@@ -33,19 +33,35 @@ object McpClient {
     /** Sessions are per process; a restart simply handshakes again. */
     private val sessions = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-    data class Connect(val ok: Boolean, val tools: List<McpCore.McpTool> = emptyList(), val reason: String? = null)
+    data class Connect(
+        val ok: Boolean,
+        val tools: List<McpCore.McpTool> = emptyList(),
+        val reason: String? = null,
+        /** `serverInfo.name` from the handshake — shown so the user sees *what* answered. */
+        val serverName: String = "",
+        val serverVersion: String = "",
+    )
 
     fun forget(serverId: String) { sessions.remove(serverId) }
 
-    /** Handshake + `tools/list`. Nothing is cached: the list always describes the server as it is now. */
+    /**
+     * Handshake + `tools/list`. Nothing is cached on disk: the list always describes the server as it is now.
+     * The `initialize` reply is kept only for its `serverInfo`, which names the server in the UI.
+     */
     fun connect(server: McpCore.McpServer, token: String? = null): Connect {
         if (!server.url.startsWith("http")) return Connect(false, reason = "no_url")
-        val (problem, sessionId) = handshake(server, token)
-        if (problem != null) return Connect(false, reason = problem)
+
+        val init = post(server, token, McpCore.initializeBody(1), null) ?: return Connect(false, reason = "not_mcp")
+        if (!init.ok) return Connect(false, reason = "rpc_" + (init.errorMessage ?: "initialize").take(60))
+        val (serverName, serverVersion) = McpCore.serverInfo(init)
+        val sessionId = sessions[server.id]
+
+        // `notifications/initialized` has no reply; a server that dislikes it is still usable.
+        runCatching { post(server, token, McpCore.initializedNotification(), sessionId) }
+
         val reply = post(server, token, McpCore.toolsListBody(), sessionId) ?: return Connect(false, reason = "not_mcp")
-        if (!reply.ok) return Connect(false, reason = "rpc_" + (reply.errorMessage ?: "error").take(60))
-        val tools = McpCore.parseTools(reply, server)
-        return Connect(true, tools)
+        if (!reply.ok) return Connect(false, reason = "rpc_" + (reply.errorMessage ?: "tools/list").take(60))
+        return Connect(true, McpCore.parseTools(reply, server), null, serverName, serverVersion)
     }
 
     /** Runs one listed tool. The reply is reduced to text by [McpCore.parseToolResult]. */
@@ -55,17 +71,6 @@ object McpClient {
         val reply = post(server, token, McpCore.toolsCallBody(3, tool, argumentsJson), sessionId)
             ?: return McpCore.ToolRun(false, "")
         return McpCore.parseToolResult(reply)
-    }
-
-    /** Returns null on success, or a failure reason. */
-    private fun handshake(server: McpCore.McpServer, token: String?): Pair<String?, String?> {
-        val reply = post(server, token, McpCore.initializeBody(1), null)
-            ?: return "not_mcp" to null
-        if (!reply.ok) return ("rpc_" + (reply.errorMessage ?: "initialize").take(60)) to null
-        val sessionId = sessions[server.id]
-        // `notifications/initialized` has no id and no reply; a server that dislikes it is still usable.
-        runCatching { post(server, token, McpCore.initializedNotification(), sessionId) }
-        return null to sessionId
     }
 
     private fun post(

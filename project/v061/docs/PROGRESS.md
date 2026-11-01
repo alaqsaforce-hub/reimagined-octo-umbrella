@@ -669,3 +669,12 @@ unless the user asks.
 **Verified:** BUILD SUCCESSFUL · 534 tests / 0 fail / 73 suites · lint 0 errors / 51 warnings · APK vc 27 /
 1.4.0 · 19,277,617 B · `c5b9579f…`. Tests found one display bug (blank server name → empty row) which was fixed
 in the product.
+
+## v1.4.1 — MCP tool policy: ask only when it matters (2026-11-01)
+
+Confirmation became per **tool** instead of per intent: a tool the server marks `readOnlyHint` (and not
+destructive) runs straight through, a write tool confirms, and an unannotated tool confirms because silence is
+not permission. Implemented with `McpTool.needsConfirm`, a 10-minute in-memory `McpTools` snapshot consulted by
+the pure `CommandPipeline` (injectable `needsConfirm`), and a Settings policy line + one-tap GitHub MCP preset.
+
+**Verified:** 542 tests / 0 fail / 74 suites · lint 0 err / 51 warn · APK vc 28 · `dd3f7539…`.

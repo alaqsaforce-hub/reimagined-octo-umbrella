@@ -800,7 +800,15 @@ class AssistantOverlayService : LifecycleService() {
             }
             else -> emptyMap()
         }
-        when (val d = CommandPipeline.decide(spec, bn, candidates)) {
+        val needsConfirm: (CmdIntent, com.voicedock.ai.command.CommandSpec) -> Boolean = { i, s2 ->
+            // Read-only MCP tools run straight through; write tools and unclassified ones confirm.
+            if (i == CmdIntent.MCP_RUN) {
+                com.voicedock.ai.mcp.McpTools.needsConfirm(s2.slot(Slot.TEXT).orEmpty().ifBlank { s2.raw })
+            } else {
+                CommandRegistry.isDestructive(i)
+            }
+        }
+        when (val d = CommandPipeline.decide(spec, bn, candidates, needsConfirm = needsConfirm)) {
             is CommandDecision.Clarify -> {
                 pendingSpec = null
                 pendingSource = source
@@ -1199,12 +1207,16 @@ class AssistantOverlayService : LifecycleService() {
                     lifecycleScope.launch {
                         val wanted = if (spec.intent == CmdIntent.MCP_RUN) spec.slot(Slot.TEXT).orEmpty() else ""
                         val found = mutableListOf<com.voicedock.ai.mcp.McpCore.McpTool>()
+                        val serversSeen = mutableListOf<String>()
                         var firstFailure: String? = null
                         withContext(Dispatchers.IO) {
                             for (sv in servers) {
                                 val token = sv.tokenName?.let { SecretStore.get(this@AssistantOverlayService, it) }
                                 val c = com.voicedock.ai.mcp.McpClient.connect(sv, token)
-                                if (c.ok) found += c.tools
+                                if (c.ok) {
+                                    found += c.tools
+                                    serversSeen += c.serverName.ifBlank { sv.label }
+                                }
                                 else if (firstFailure == null) firstFailure = c.reason
                             }
                         }
@@ -1213,10 +1225,14 @@ class AssistantOverlayService : LifecycleService() {
                                 com.voicedock.ai.mcp.McpCore.failure(firstFailure ?: "not_mcp", bn), false,
                                 "mcp:${firstFailure ?: "empty"}",
                             )
-                            spec.intent == CmdIntent.MCP_TOOLS -> done(
-                                com.voicedock.ai.mcp.McpCore.toolsAnswer(found.distinctBy { it.serverId + "/" + it.name }, bn),
-                                true, "mcp:tools:${found.size}",
-                            )
+                            spec.intent == CmdIntent.MCP_TOOLS -> {
+                                // Remembered so the *next* "run X" can confirm only when it must.
+                                com.voicedock.ai.mcp.McpTools.remember(found)
+                                done(
+                                    com.voicedock.ai.mcp.McpCore.toolsAnswer(found.distinctBy { it.serverId + "/" + it.name }, bn),
+                                    true, "mcp:tools:${found.size}:${serversSeen.joinToString("+").take(40)}",
+                                )
+                            }
                             else -> {
                                 // The tool has to be one the server just listed — a name is never invented.
                                 val lower = wanted.lowercase()
@@ -1243,6 +1259,8 @@ class AssistantOverlayService : LifecycleService() {
                                     if (!run.ok) {
                                         done(com.voicedock.ai.mcp.McpCore.failure("rpc_call", bn), false, "mcp:callfail")
                                     } else {
+                                        // The next run of the same tool can then skip the confirmation.
+                                        com.voicedock.ai.mcp.McpTools.remember(found)
                                         done(com.voicedock.ai.mcp.McpCore.runAnswer(run, tool, bn), !run.isError,
                                             "mcp:run:${tool.name}")
                                     }
