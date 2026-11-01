@@ -648,3 +648,11 @@ named weekday / next 7 days) and `cal.add` (confirmed first, duration from "২ 
 **Verified:** BUILD SUCCESSFUL, 520 tests / 0 fail / 71 suites, lint 0 errors / 51 warnings, APK vc 26 /
 1.3.4 · 19,228,461 B · `6347ccaa…` · v2-signed · 16 KB aligned. Tests also found a real gap:
 "রিমাইন্ডারের তালিকা" used to be `UNKNOWN`; fixed in `ReminderSpeech`.
+
+### Repository history note (2026-11-01)
+
+The sandbox snapshot restored an older `.git` between turns, so the per-release commits for
+v1.3.0 … v1.3.4 disappeared while the working tree stayed intact. HEAD `dfb1a2c` therefore carries
+the whole v1.3.х span in one commit, with that fact stated in the commit message. Two insurance
+copies now live in `artifacts/`: `VoiceDock-repo-v1.3.4.bundle` (complete git history) and
+`VoiceDock-AI-v1.3.4-source.zip` (the tree without build outputs).
