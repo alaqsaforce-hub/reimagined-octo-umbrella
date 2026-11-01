@@ -76,6 +76,7 @@ fun SettingsScreen(
         RemindersSection(resumeTick)
         DeviceAccessSection(resumeTick)
     SearchSection()
+    McpSection()
         HorizontalDivider()
         Section(tr("শুরুর গাইড", "Getting started"))
         Text(

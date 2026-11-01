@@ -121,7 +121,8 @@ Shipped: `send/SendCore` + `send/AccessibilitySender` (send through the open cha
 * **Instagram/Facebook actions** (like, comment) are **not** planned: they are against those platforms'
   terms and unverifiable.
 
-## v1.4.0 — "এজেন্টের হাত-পা" (agentic layer)
+## v1.4.0 — "এজেন্টের হাত-পা" (agentic layer)  
+* ✅ **MCP client — SHIPPED in v1.4.0** (tools/list + tools/call over streamable HTTP, Settings UI, confirmation always). Next in v1.4.x: SSH/VPS, then goal→plan agents, then skills-as-data.
 
 * **MCP client** (`mcp/`): JSON-RPC over HTTP/SSE using the OkHttp stack already present. Tool discovery
   fills the `Skills` list, and tool calls map to command intents with the same confirmation rules. Start

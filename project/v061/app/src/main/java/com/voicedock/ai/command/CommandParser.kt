@@ -72,6 +72,11 @@ object CommandParser {
         if (containsAny(low, "আনডু", "আনডো", "undo", "ফিরিয়ে নাও")) {
             return spec(Intent.UNDO, 0.95)
         }
+        // --- v1.4.0 MCP: only when the sentence says MCP, so ordinary "tool" talk is untouched ---
+        if (containsAny(low, "mcp", "এমসিপি")) {
+            val runVerb = containsAny(low, "চালাও", "চালান", "run", "call", "ব্যবহার কর", "use the tool", "কাজে লাগাও")
+            return if (runVerb) spec(Intent.MCP_RUN, 0.9, Slot.TEXT to raw) else spec(Intent.MCP_TOOLS, 0.91)
+        }
         // --- v1.3.4 calendar: only when the sentence says "calendar" (a reminder is a different thing) ---
         if (containsAny(low, "ক্যালেন্ডার", "calendar", "ক্যালেন্ডারে")) {
             val addVerb = containsAny(low, "যোগ কর", "যোগ দে", "ঢোকাও", "লিখে রাখো", "এড কর", "add to", "add it", "schedule")

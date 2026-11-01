@@ -63,6 +63,10 @@ object CommandRegistry {
         // v1.3.4 — reading is harmless; writing to the user's calendar is not, so it confirms like a message.
         Intent.CAL_LIST to IntentMeta(emptySet(), false, true, "ক্যালেন্ডার দেখা", "Read the calendar"),
         Intent.CAL_ADD to IntentMeta(setOf(Slot.TEXT, Slot.TIME), true, true, "ক্যালেন্ডারে ইভেন্ট যোগ", "Add a calendar event"),
+        // v1.4.0 — listing is harmless. Running a third-party tool is not, and the app cannot know what a tool
+        // will do, so it always confirms (Fast Mode can opt in per the v1.0.0 rule).
+        Intent.MCP_TOOLS to IntentMeta(emptySet(), false, true, "MCP টুল দেখা", "List MCP tools"),
+        Intent.MCP_RUN to IntentMeta(setOf(Slot.TEXT), true, true, "MCP টুল চালানো", "Run an MCP tool"),
         Intent.UNKNOWN to IntentMeta(setOf(Slot.QUERY), false, false, "বোঝা যায়নি", "Not understood"),
     )
 

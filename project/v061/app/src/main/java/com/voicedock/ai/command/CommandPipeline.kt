@@ -139,6 +139,9 @@ object CommandPipeline {
                 "read the on-screen transcript and summarise it")
             Intent.CAL_LIST -> bn("ক্যালেন্ডার দেখাবে (${spec.slot(Slot.TIME).orEmpty().ifBlank { "আজ" }})",
                 "read the calendar (${spec.slot(Slot.TIME).orEmpty().ifBlank { "today" }})")
+            Intent.MCP_TOOLS -> bn("MCP সার্ভারগুলোর টুল দেখাবে", "list the tools the MCP servers expose")
+            Intent.MCP_RUN -> bn("MCP টুল চালাবে: “${spec.slot(Slot.TEXT).orEmpty().take(50)}”",
+                "run an MCP tool: “${spec.slot(Slot.TEXT).orEmpty().take(50)}”")
             Intent.CAL_ADD -> bn("ক্যালেন্ডারে যোগ করবে: “${spec.slot(Slot.TEXT).orEmpty().take(50)}” (${spec.slot(Slot.TIME).orEmpty()})",
                 "add to the calendar: “${spec.slot(Slot.TEXT).orEmpty().take(50)}” (${spec.slot(Slot.TIME).orEmpty()})")
             Intent.REMINDER_ADD -> bn(

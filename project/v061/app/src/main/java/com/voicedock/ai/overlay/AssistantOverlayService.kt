@@ -30,6 +30,7 @@ import com.voicedock.ai.VoiceDock
 import com.voicedock.ai.ai.AiException
 import com.voicedock.ai.ai.AiSetup
 import com.voicedock.ai.security.SecretDetector
+import com.voicedock.ai.security.SecretStore
 import com.voicedock.ai.device.AgentSafetyOracle
 import com.voicedock.ai.context.AssistantAction
 import com.voicedock.ai.context.AssistantGreeting
@@ -1178,6 +1179,73 @@ class AssistantOverlayService : LifecycleService() {
                                         busy = false, busyLabel = "",
                                         answer = com.voicedock.ai.summaries.ScreenTranscript.text(parsed, bn, summary),
                                     )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- v1.4.0 MCP -------------------------------------------------------------------------
+            CmdIntent.MCP_TOOLS, CmdIntent.MCP_RUN -> {
+                val servers = SettingsStore.state.value.mcpServersSafe().filter { it.enabled }
+                if (servers.isEmpty()) {
+                    done(com.voicedock.ai.mcp.McpCore.noServers(bn), false, "mcp:noserver")
+                    _dict.value = _dict.value.copy(needsSetup = true, note = tr(
+                        "সেটিংস → MCP-এ ঠিকানা যোগ করুন।", "Add an address in Settings → MCP.",
+                    ))
+                } else {
+                    _dict.value = _dict.value.copy(busy = true, busyLabel = tr("MCP সার্ভারে যাচ্ছি…", "Talking to the MCP server…"))
+                    lifecycleScope.launch {
+                        val wanted = if (spec.intent == CmdIntent.MCP_RUN) spec.slot(Slot.TEXT).orEmpty() else ""
+                        val found = mutableListOf<com.voicedock.ai.mcp.McpCore.McpTool>()
+                        var firstFailure: String? = null
+                        withContext(Dispatchers.IO) {
+                            for (sv in servers) {
+                                val token = sv.tokenName?.let { SecretStore.get(this@AssistantOverlayService, it) }
+                                val c = com.voicedock.ai.mcp.McpClient.connect(sv, token)
+                                if (c.ok) found += c.tools
+                                else if (firstFailure == null) firstFailure = c.reason
+                            }
+                        }
+                        when {
+                            found.isEmpty() -> done(
+                                com.voicedock.ai.mcp.McpCore.failure(firstFailure ?: "not_mcp", bn), false,
+                                "mcp:${firstFailure ?: "empty"}",
+                            )
+                            spec.intent == CmdIntent.MCP_TOOLS -> done(
+                                com.voicedock.ai.mcp.McpCore.toolsAnswer(found.distinctBy { it.serverId + "/" + it.name }, bn),
+                                true, "mcp:tools:${found.size}",
+                            )
+                            else -> {
+                                // The tool has to be one the server just listed — a name is never invented.
+                                val lower = wanted.lowercase()
+                                val tool = found
+                                    .filter { it.name.isNotBlank() && lower.contains(it.name.lowercase()) }
+                                    .maxByOrNull { it.name.length }
+                                    ?: found.firstOrNull { it.required.isEmpty() && lower.contains(it.name.lowercase()) }
+                                if (tool == null) {
+                                    // Name the tool the user actually said, so the answer explains itself.
+                                    val m = Regex("mcp\\s*(?:দিয়ে|diye)?\\s*([a-zA-Z0-9_.-]{2,40})").find(wanted)
+                                    val named = m?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() }
+                                        ?: wanted.split(' ').firstOrNull().orEmpty()
+                                    done(com.voicedock.ai.mcp.McpCore.unknownTool(named, found, bn), false, "mcp:notool")
+                                } else {
+                                    val server = servers.firstOrNull { it.id == tool.serverId }
+                                    val args = com.voicedock.ai.mcp.McpCore.argumentsFor(
+                                        tool, wanted.replace(tool.name, " ", ignoreCase = true).trim(),
+                                    )
+                                    val run = withContext(Dispatchers.IO) {
+                                        val token = server?.tokenName?.let { SecretStore.get(this@AssistantOverlayService, it) }
+                                        if (server == null) com.voicedock.ai.mcp.McpCore.ToolRun(false, "")
+                                        else com.voicedock.ai.mcp.McpClient.call(server, tool.name, args, token)
+                                    }
+                                    if (!run.ok) {
+                                        done(com.voicedock.ai.mcp.McpCore.failure("rpc_call", bn), false, "mcp:callfail")
+                                    } else {
+                                        done(com.voicedock.ai.mcp.McpCore.runAnswer(run, tool, bn), !run.isError,
+                                            "mcp:run:${tool.name}")
+                                    }
                                 }
                             }
                         }

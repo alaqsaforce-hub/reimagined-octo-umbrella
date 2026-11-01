@@ -457,3 +457,20 @@ Needs Accessibility enabled for VoiceDock. 2, 3 and 5 decide whether the promise
    no false list.
 10. Force-stop the app, reopen, read the calendar → it says the Google connection is missing and
     points at Settings (the token is memory-only by design), instead of failing silently.
+
+## v1.4.0 — MCP tool servers
+
+1. Settings → **MCP** → add `https://<your-server>/mcp` with no token → tap **"টুল দেখুন"** → the tool count
+   and first names appear, or an exact failure sentence (404 means the address is not an MCP endpoint).
+2. Add the same server with a **wrong token** → the reply names the permission problem and tells you to check
+   the token; nothing is silently retried.
+3. Say **"MCP টুল দেখাও"** → the bubble lists `server — Nটি` with tool names; with no server added it says so
+   and points at Settings.
+4. Say **"mcp দিয়ে <tool> চালাও …"** → a confirmation card appears **before** anything runs, showing the
+   sentence; cancel → nothing is called.
+5. Confirm a **read-only** tool (e.g. a directory listing) → the text result is shown and spoken if
+   speak-results is on.
+6. Confirm a tool **without a required argument** by name only → it runs; say a name that does not exist →
+   the answer lists the real tools.
+7. Turn airplane mode on and repeat step 1 → an honest "internet নেই" sentence, no crash, no fake list.
+8. Add a ninth server → the list stays at 8 (the cap is stated); remove one → it disappears immediately.

@@ -75,6 +75,8 @@ data class AppSettings(
     val customAiUrl: String = "",
 
     /** v1.2.1 — internet search: "none" opens the browser, the others need a key or a self-hosted URL. */
+    /** v1.4.0 — MCP servers the user added (addresses only; tokens live in [com.voicedock.ai.security.SecretStore]). */
+    val mcpServers: List<com.voicedock.ai.mcp.McpCore.McpServer> = emptyList(),
     val searchProvider: String = "none",
     val searxUrl: String = "",
     /** Last Mode B style. */
@@ -148,6 +150,9 @@ data class AppSettings(
     )
 
     /** Probe blocklist, sanitised so a hand-edited prefs blob cannot inject junk. */
+    /** Sanitised so a hand-edited prefs blob cannot inject a bad URL or a 200-entry list. */
+    fun mcpServersSafe(): List<com.voicedock.ai.mcp.McpCore.McpServer> =
+        com.voicedock.ai.mcp.McpCore.sanitize(mcpServers)
     fun blockedPackages(): List<String> = com.voicedock.ai.context.ProbePolicy.sanitize(probeBlockedPackages)
     fun sessionConfig() = SessionConfig(
         shortPauseMs = shortPauseSec.coerceIn(1, 30) * 1000L,

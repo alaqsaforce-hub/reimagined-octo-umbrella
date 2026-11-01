@@ -57,6 +57,9 @@ enum class Intent(val id: String) {
     /** v1.3.4 — read the calendar, and add one event (confirmed first). */
     CAL_LIST("cal.list"),
     CAL_ADD("cal.add"),
+    /** v1.4.0 — MCP: which tools the configured servers expose, and running one of them. */
+    MCP_TOOLS("mcp.tools"),
+    MCP_RUN("mcp.run"),
     UNKNOWN("unknown");
 
     companion object {

@@ -656,3 +656,16 @@ v1.3.0 … v1.3.4 disappeared while the working tree stayed intact. HEAD `dfb1a2
 the whole v1.3.х span in one commit, with that fact stated in the commit message. Two insurance
 copies now live in `artifacts/`: `VoiceDock-repo-v1.3.4.bundle` (complete git history) and
 `VoiceDock-AI-v1.3.4-source.zip` (the tree without build outputs).
+
+## v1.4.0 — MCP client: the agent gets hands (2026-11-01)
+
+New `mcp/McpCore.kt` (pure: JSON-RPC 2.0 messages, JSON **and** SSE reply reading, tool discovery with schema,
+argument shaping from speech, honest result/failure text, URL redaction) and `mcp/McpClient.kt` (streamable
+HTTP with `Mcp-Session-Id`, no automatic retry). Two intents — `mcp.tools` and `mcp.run` — where running always
+confirms because a third-party tool's effect cannot be known. New Settings → MCP section adds servers, tests
+them for real, and stores tokens in the Keystore-backed `SecretStore`. No new dependency; nothing connects
+unless the user asks.
+
+**Verified:** BUILD SUCCESSFUL · 534 tests / 0 fail / 73 suites · lint 0 errors / 51 warnings · APK vc 27 /
+1.4.0 · 19,277,617 B · `c5b9579f…`. Tests found one display bug (blank server name → empty row) which was fixed
+in the product.
