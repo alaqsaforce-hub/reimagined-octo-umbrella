@@ -63,6 +63,53 @@ interface DraftDao {
     suspend fun delete(id: String)
 }
 
+/** v1.2.0 — a spoken reminder ("৩টায় মনে করিয়ে দাও পানি খেতে"). */
+enum class ReminderStatus { PENDING, DONE, CANCELLED }
+
+@Entity(
+    tableName = "reminders",
+    indices = [Index("triggerAt"), Index("status")],
+)
+data class ReminderRow(
+    @PrimaryKey val id: String,
+    val text: String,
+    /** Epoch millis of the moment the reminder must speak up. */
+    val triggerAt: Long,
+    val createdAt: Long,
+    val status: ReminderStatus,
+    /** "voice" / "text" / "notification" — where it came from, for the log and for debugging. */
+    val source: String = "",
+)
+
+@Dao
+interface ReminderDao {
+    @Upsert
+    suspend fun upsert(r: ReminderRow)
+
+    @Query("SELECT * FROM reminders WHERE id = :id")
+    suspend fun get(id: String): ReminderRow?
+
+    /** Everything still to come, soonest first. */
+    @Query("SELECT * FROM reminders WHERE status = 'PENDING' ORDER BY triggerAt ASC LIMIT :limit")
+    suspend fun pending(limit: Int = 50): List<ReminderRow>
+
+    @Query("SELECT * FROM reminders WHERE status = 'PENDING' ORDER BY triggerAt ASC LIMIT :limit")
+    fun observePending(limit: Int = 50): Flow<List<ReminderRow>>
+
+    @Query("SELECT * FROM reminders WHERE status = 'PENDING' AND triggerAt <= :at")
+    suspend fun dueBefore(at: Long): List<ReminderRow>
+
+    @Query("UPDATE reminders SET status = :status WHERE id = :id")
+    suspend fun setStatus(id: String, status: ReminderStatus)
+
+    @Query("DELETE FROM reminders WHERE id = :id")
+    suspend fun delete(id: String)
+
+    /** Finished rows are pruned after a week so the table cannot grow forever. */
+    @Query("DELETE FROM reminders WHERE status != 'PENDING' AND triggerAt < :before")
+    suspend fun prune(before: Long)
+}
+
 /**
  * Migration strategy: every schema change bumps [version] and adds an explicit [Migration] to
  * [Migrations.ALL]; the exported schema JSON (app/schemas) is committed. No destructive fallback —
@@ -71,9 +118,9 @@ interface DraftDao {
 @Database(
     entities = [
         DictationDraft::class, KbDocument::class, KbChunk::class, KbChunkFts::class,
-        MemoryRow::class, NotifRow::class,
+        MemoryRow::class, NotifRow::class, ReminderRow::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -82,6 +129,9 @@ abstract class AppDatabase : RoomDatabase() {
 
     /** v0.10.0 — assistant memory + notification log (were JSON files). */
     abstract fun assistant(): AssistantDao
+
+    /** v1.2.0 — reminders and other scheduled jobs. */
+    abstract fun reminders(): ReminderDao
 
     companion object {
         const val NAME = "voicedock.db"
@@ -124,5 +174,19 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    /**
+     * v1.2.0: reminders. DDL copied from the generated `schemas/…/4.json` (Room validates the identity
+     * hash on open, and [RoomPersistenceTest] upgrades a real v3 file, so a mismatch cannot ship).
+     */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            listOf(
+                "CREATE TABLE IF NOT EXISTS `reminders` (`id` TEXT NOT NULL, `text` TEXT NOT NULL, `triggerAt` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `status` TEXT NOT NULL, `source` TEXT NOT NULL, PRIMARY KEY(`id`))",
+                "CREATE INDEX IF NOT EXISTS `index_reminders_triggerAt` ON `reminders` (`triggerAt`)",
+                "CREATE INDEX IF NOT EXISTS `index_reminders_status` ON `reminders` (`status`)",
+            ).forEach { db.execSQL(it) }
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 }

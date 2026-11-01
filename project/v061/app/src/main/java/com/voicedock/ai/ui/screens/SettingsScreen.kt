@@ -72,6 +72,8 @@ fun SettingsScreen(
         AssistantSettingsSection(resumeTick)
         HotwordSection(resumeTick)
         SystemControlSection(resumeTick)
+        PermissionMatrix(resumeTick)
+        RemindersSection(resumeTick)
         HorizontalDivider()
         Section(tr("শুরুর গাইড", "Getting started"))
         Text(

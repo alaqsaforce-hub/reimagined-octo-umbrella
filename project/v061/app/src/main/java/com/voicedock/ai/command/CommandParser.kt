@@ -1,5 +1,7 @@
 package com.voicedock.ai.command
 
+import com.voicedock.ai.schedule.TimeWords
+
 /**
  * v0.7.0 — sentence → [CommandSpec].
  *
@@ -49,6 +51,22 @@ object CommandParser {
         fun spec(i: Intent, conf: Double, vararg slots: Pair<Slot, String>) =
             CommandSpec.of(i, raw, conf, *slots)
 
+        // --- reminders (v1.2.0): the goal and the time are split offline, before anything else, because
+        // "মনে করিয়ে দাও" also contains the "মনে" that the memory rules look for.
+        if (ReminderSpeech.looksLike(low)) {
+            if (ReminderSpeech.isListRequest(raw)) return spec(Intent.REMINDER_LIST, 0.93)
+            val goal = ReminderSpeech.goal(raw)
+            val hasTime = TimeWords.parse(raw, System.currentTimeMillis()) != null
+            return CommandSpec(
+                intent = Intent.REMINDER_ADD,
+                slots = buildMap {
+                    if (goal.isNotBlank()) put(Slot.TEXT, goal)
+                    if (hasTime) put(Slot.TIME, raw)
+                },
+                confidence = 0.92,
+                raw = raw,
+            )
+        }
         // --- undo (v0.10.0): one step back, only for what can honestly be reversed ---
         if (containsAny(low, "আনডু", "আনডো", "undo", "ফিরিয়ে নাও")) {
             return spec(Intent.UNDO, 0.95)

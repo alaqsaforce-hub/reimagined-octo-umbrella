@@ -164,6 +164,20 @@ class GeminiClient(
     }
 
     companion object {
+        /**
+         * v1.2.0 — self-hosted models (Ollama on a laptop CPU, a 3B model on a NAS) can take a long time
+         * to produce their first token. 60 s read looked like a broken provider; 5 min + no call timeout
+         * is the honest limit for a server the user runs themselves.
+         */
+        val localHttp: OkHttpClient by lazy {
+            OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS)
+                .readTimeout(300, TimeUnit.SECONDS)
+                .callTimeout(0, TimeUnit.SECONDS)
+                .build()
+        }
+
         val defaultHttp: OkHttpClient by lazy {
             OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).writeTimeout(60, TimeUnit.SECONDS).build()
         }

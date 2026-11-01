@@ -241,3 +241,44 @@ Setup: floating icon visible, Accessibility on, anything else open (e.g. the hom
 **Local model (optional)**
 13. Run `ollama run qwen2.5:1.5b` on a computer in the same Wi-Fi → Settings → AI → Custom →
     `http://192.168.x.x:11434/v1` → the provider test must show ✓ and "ask the AI" must answer offline.
+
+---
+
+## v1.2.0 — providers that recover, permissions that are real, reminders
+
+**A local model written "wrong" must now work (do this on a real Ollama/LM Studio)**
+1. Computer: `ollama serve` + `ollama pull qwen2.5:1.5b`. Settings → AI → Custom, and paste **each** of these
+   in turn, pressing ‘যাচাই’ after each: `192.168.x.x:11434`, `http://192.168.x.x:11434/api/tags`,
+   `http://192.168.x.x:11434/v1/chat/completions`. All three must end in ✓ and pick `qwen2.5:1.5b`
+   (not an embedding model) by themselves.
+2. Stop `ollama serve` and press ‘যাচাই’ → the message must say the server cannot be reached **and** mention
+   the same Wi-Fi / server running. Not "invalid key", not "no internet".
+3. Pull a large model (7B+) and ask a question → it must wait (no 60-second cut-off) instead of failing.
+4. On a server with no models at all → the test must say **✗** with `ollama pull …`, never "✓ connected".
+
+**Retry / recovery**
+5. Turn Wi-Fi off, ask the AI something, turn it back on within a few seconds and ask again → the second
+   attempt must succeed without touching Settings.
+6. Wrong API key on any cloud provider → one attempt only (no retry storm), message says the key is wrong.
+
+**Permissions**
+7. Settings → সিস্টেম ও এজেন্ট → "অনুমতি (সব এক জায়গায়)": the summary must count correctly, and
+   **সব অনুমতি একসাথে** must show ONE dialog for everything still missing, then the counts must go up.
+8. Revoke one permission in system settings, come back to the app → that row must show ✗ again without a
+   restart (that is the resume re-probe).
+9. Accessibility: with the service enabled but the app just reinstalled, the row must say
+   "সংযুক্ত নয়" until you toggle it — that is the honest state, not a bug.
+10. Exact alarms: press ‘ঠিক সময়ের অনুমতি চাও’, grant it, and the reminders header must switch from
+    ⚠ to ✓.
+
+**Reminders (the whole point of the version)**
+11. Say "৩টায় মনে করিয়ে দাও পানি খেতে" at, say, 13:10 → the answer must say **আজ বিকাল ৩:০০**, and the
+    reminder must appear in Settings → রিমাইন্ডার. At 15:00 the phone must notify (and buzz) on the minute.
+12. Press **১০ মিনিট পরে** on the notification → it must come back 10 minutes later.
+13. Press **হয়ে গেছে ✓** → the reminder disappears from the list.
+14. Restart the phone with one reminder pending → it must still fire (BootReceiver).
+15. Say "২০ মিনিট পরে মনে করিয়ে দাও" → must fire ~20 minutes later, not at the next clock hour.
+16. Say "মনে করিয়ে দাও" alone → it must ask *কী মনে করিয়ে দেব?*, and "৩টায় মনে করিয়ে দাও" alone must ask
+    the same instead of storing a broken reminder.
+17. Say "আমার রিমাইন্ডার দেখাও" → a spoken + written list of what is coming.
+18. Without the exact-alarm access: create one → the answer itself must say "কয়েক মিনিট দেরি হতে পারে".

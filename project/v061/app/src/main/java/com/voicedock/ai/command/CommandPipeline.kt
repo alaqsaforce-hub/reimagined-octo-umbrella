@@ -65,9 +65,12 @@ object CommandPipeline {
             val question = when (slot) {
                 Slot.APP -> bn("কোন অ্যাপ?", "Which app?")
                 Slot.CONTACT -> bn("কাকে?", "Which contact?")
-                Slot.TEXT -> bn("কী মনে রাখবো? আবার বলো।", "What should I remember? Say it again.")
+                Slot.TEXT -> if (spec.intent == Intent.REMINDER_ADD)
+                    bn("কী মনে করিয়ে দেব?", "Remind you about what?")
+                else bn("কী মনে রাখবো? আবার বলো।", "What should I remember? Say it again.")
                 Slot.QUERY -> bn("কী সম্পর্কে?", "About what?")
                 Slot.MEDIA -> bn("গানের কী করবো?", "What should I do with the music?")
+                Slot.TIME -> bn("কখন মনে করিয়ে দেব? যেমন ‘৩টায়’ বা ‘২০ মিনিট পরে’", "When should I remind you? e.g. ‘at 3’ or ‘in 20 minutes’")
             }
             val choices = if (options.isEmpty()) {
                 listOf(Choice(bn("বাতিল", "Cancel"), Intent.UNKNOWN))
@@ -115,6 +118,11 @@ object CommandPipeline {
                 bn("মিউজিক: ${what ?: "নিয়ন্ত্রণ"}", "media: ${what ?: (a.ifBlank { "control" })}")
             }
             Intent.UNDO -> bn("শেষ কাজটি ফিরিয়ে নেবে", "undo the last action")
+            Intent.REMINDER_ADD -> bn(
+                "‘${spec.slot(Slot.TEXT).orEmpty()}’ — ${spec.slot(Slot.TIME).orEmpty()} মনে করিয়ে দেবে",
+                "remind you to ‘${spec.slot(Slot.TEXT).orEmpty()}’ — ${spec.slot(Slot.TIME).orEmpty()}",
+            )
+            Intent.REMINDER_LIST -> bn("রিমাইন্ডারগুলোর তালিকা দেখাবে", "list your reminders")
             Intent.UNKNOWN -> bn("কিছু না", "nothing")
         }
     }

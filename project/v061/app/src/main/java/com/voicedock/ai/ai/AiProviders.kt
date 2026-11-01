@@ -60,8 +60,19 @@ enum class AiProvider(
     }
 }
 
-class AiException(val kind: Kind, val httpCode: Int, message: String, val provider: AiProvider? = null) : Exception(message) {
-    enum class Kind { AUTH, RATE_LIMIT, BAD_REQUEST, SERVER, NETWORK, BLOCKED, EMPTY, NOT_CONFIGURED }
+class AiException(
+    val kind: Kind,
+    val httpCode: Int,
+    message: String,
+    val provider: AiProvider? = null,
+    /** v1.2.0 — the provider's own `Retry-After` header (seconds), honoured by [RetryPolicy]. */
+    val retryAfter: Int? = null,
+) : Exception(message) {
+    enum class Kind {
+        AUTH, RATE_LIMIT, BAD_REQUEST, SERVER, NETWORK, BLOCKED, EMPTY, NOT_CONFIGURED,
+        /** v1.2.0 — a socket read timed out: a slow local model reads very differently from "no internet". */
+        TIMEOUT,
+    }
 }
 
 data class ChatMessage(val role: String, val text: String) {
@@ -105,8 +116,13 @@ internal fun httpCall(http: OkHttpClient, request: Request, provider: AiProvider
                 val e = lenient.parseToJsonElement(text).jsonObject["error"]
                 (e as? JsonObject)?.get("message")?.jsonPrimitive?.contentOrNull ?: e?.jsonPrimitive?.contentOrNull
             }.getOrNull() ?: "HTTP ${r.code}"
-            throw AiException(kindFor(r.code, msg), r.code, msg.take(300), provider)
+            throw AiException(kindFor(r.code, msg), r.code, msg.take(300), provider,
+                retryAfter = r.header("Retry-After")?.trim()?.toIntOrNull())
         }
+    } catch (e: java.net.SocketTimeoutException) {
+        // A local model on a small machine can take a minute for its first token: that is a TIMEOUT,
+        // not "no internet", and [AiSetup.explain] says something different for it.
+        throw AiException(AiException.Kind.TIMEOUT, 0, e.javaClass.simpleName, provider)
     } catch (e: IOException) {
         throw AiException(AiException.Kind.NETWORK, 0, e.javaClass.simpleName, provider)
     }
@@ -238,7 +254,11 @@ data class AiAnswer(val text: String, val provider: AiProvider, val model: Strin
  * Free-first fallback: tries candidates in order; a limit/server/network/auth error moves on to the next
  * provider. Never retries a provider it was not given (paid gating happens in [AiPolicy]).
  */
-class AiRouter(private val candidates: () -> List<AiCandidate>) {
+class AiRouter(
+    /** v1.2.0 — injected by tests; production sleeps on the IO thread that already runs this call. */
+    private val sleep: (Long) -> Unit = { ms -> if (ms > 0) Thread.sleep(ms) },
+    private val candidates: () -> List<AiCandidate>,
+) {
     fun complete(system: String, messages: List<ChatMessage>): AiAnswer = completeVision(system, messages, emptyList())
 
     /** Same free-first fallback; with images only image-capable APIs are tried. */
@@ -248,14 +268,24 @@ class AiRouter(private val candidates: () -> List<AiCandidate>) {
         val attempts = mutableListOf<AiAttempt>()
         var last: AiException? = null
         for (c in list) {
-            try {
-                val t = if (images.isEmpty()) c.client.complete(c.model, system, messages) else c.client.completeWithImages(c.model, system, messages, images)
-                attempts += AiAttempt(c.provider, c.model, null)
-                return AiAnswer(t, c.provider, c.model, attempts, c.account)
-            } catch (e: AiException) {
-                attempts += AiAttempt(c.provider, c.model, "${e.kind}: ${e.message}")
-                last = e
-                if (e.kind == AiException.Kind.NOT_CONFIGURED) continue
+            var attempt = 0
+            while (true) {
+                try {
+                    val t = if (images.isEmpty()) c.client.complete(c.model, system, messages) else c.client.completeWithImages(c.model, system, messages, images)
+                    attempts += AiAttempt(c.provider, c.model, null)
+                    return AiAnswer(t, c.provider, c.model, attempts, c.account)
+                } catch (e: AiException) {
+                    // v1.2.0: one quick retry on a transient failure (Wi-Fi handoff, one 502, a slow
+                    // local model) before this provider is written off. Auth/limit/content are final.
+                    if (attempt < RetryPolicy.retries(e.kind, e.httpCode, e.retryAfter)) {
+                        runCatching { sleep(RetryPolicy.delayMs(e.kind, attempt, e.retryAfter)) }
+                        attempt++
+                        continue
+                    }
+                    attempts += AiAttempt(c.provider, c.model, "${e.kind}: ${e.message}")
+                    last = e
+                    break
+                }
             }
         }
         throw AiException(last?.kind ?: AiException.Kind.EMPTY, last?.httpCode ?: 0,
@@ -331,7 +361,8 @@ object AiPolicy {
             AiProvider.OPENAI -> first("-mini", "gpt") ?: ok.first()
             AiProvider.ANTHROPIC -> first("haiku", "sonnet") ?: ok.first()
             AiProvider.DEEPSEEK -> first("deepseek-chat") ?: ok.first()
-            AiProvider.CUSTOM -> ok.first()
+            // v1.2.0: a local server answers with whatever is installed — rank real chat models first.
+            AiProvider.CUSTOM -> LocalServer.rank(ok).first()
             AiProvider.CHATGPT -> ok.first() // server order = the account's recommended order
         }
     }

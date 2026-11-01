@@ -54,6 +54,12 @@ object Skills {
             noteBn = "পরিকল্পিত: v1.2.0 (সময়সূচি + ব্যাকগ্রাউন্ড)",
             noteEn = "planned: v1.2.0 (queue + background)"),
 
+        // ---- scheduled jobs (v1.2.0) ----
+        Skill("reminder.add", "‘৩টায় মনে করিয়ে দাও’ — কাল/সন্ধ্যা/২০ মিনিট পরেও", "‘Remind me at 3’ — including tomorrow, evening, in 20 minutes",
+            SkillGroup.DEVICE, true, "নোটিফিকেশন; মিনিটে-মিনিটে চাইলে ‘ঠিক সময়ে রিমাইন্ডার’ অনুমতি",
+            "notifications; to-the-minute needs the exact-alarm access"),
+        Skill("reminder.list", "রিমাইন্ডারের তালিকা ও বাতিল", "List and cancel reminders", SkillGroup.DEVICE, true),
+
         // ---- media (v0.10.0) ----
         Skill("media.control", "গান চালানো/থামানো/পরের গান", "Play, pause, next, previous", SkillGroup.MEDIA, true,
             "নোটিফিকেশন অ্যাক্সেস", "notification access"),

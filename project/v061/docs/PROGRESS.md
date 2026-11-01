@@ -462,3 +462,30 @@ APK `versionCode 19 / 1.1.0`, minSdk 26, v2-signed, 16 KB-aligned. Device test p
 Gradle cache went with it.
 
 **Next:** v1.2.0 — scheduled jobs (reminders + send-later, with a `MIGRATION_3_4`) and YouTube search.
+
+---
+
+## v1.2.0 "providers recover, permissions are real, reminders" (built & verified 2026-11-01)
+
+The last message asked for three things: the next roadmap step, providers/local models that do not fail,
+and device permissions that genuinely take effect. All three are in this build.
+
+* **Local/proviation reliability:** URL normalisation (bare host:port, pasted `/api/tags`,
+  `/chat/completions`, missing `/v1`), a 300 s read timeout for self-hosted servers, a distinct `TIMEOUT`
+  failure, one retry per transient failure with `Retry-After`, "no models installed" is a failure not a
+  pass, and chat-model ranking instead of alphabetical-first. Each failure ends in one actionable sentence.
+* **Permissions:** a 21-row catalog drives the whole Settings section; every row is probed live, runtime
+  permissions are requested in one dialog, a feature is only "usable" with all of its accesses, and the
+  **manifest↔catalog audit is a unit test** so a future `uses-permission` cannot become a silent gap.
+* **Reminders:** a real Bengali/English time grammar, Room v4 + explicit 3→4 migration, AlarmManager with
+  exact-or-honest-inexact reporting, boot re-arming, notification actions (done / snooze 10 min), list and
+  cancel in Settings.
+* **Deliberately not shipped:** scheduled *messages* (needs a working, honest background send path — it is
+  the first item of v1.2.1) and no new provider was added; the nine existing ones were made to work.
+
+**Status:** **415 tests / 0 failures / 52 suites** (38 new), lint **0 errors / 43 warnings** (5 new, all
+cosmetic), APK `versionCode 20 / 1.2.0`, minSdk 26, v2-signed, 16 KB-aligned, 19,100,886 B.
+Device checks (18) are in `MANUAL-TESTS-v0.6.md` § v1.2.0 — 11 and 14 cannot be proven off-device.
+
+**Next:** v1.2.1 — scheduled messages (SMS auto-send + WhatsApp "open and send" with an honest limit) and
+internet search; then v1.3.0 calendar + YouTube.

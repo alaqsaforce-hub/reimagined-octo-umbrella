@@ -29,6 +29,9 @@ enum class Intent(val id: String) {
     MEDIA("media.control"),
     // v0.10.0: one step back for the actions that can honestly be reversed.
     UNDO("undo"),
+    // v1.2.0: scheduled jobs — the first kind is a spoken reminder.
+    REMINDER_ADD("reminder.add"),
+    REMINDER_LIST("reminder.list"),
     UNKNOWN("unknown");
 
     companion object {
@@ -46,7 +49,9 @@ enum class Slot(val key: String) {
     TEXT("text"),
     QUERY("query"),
     /** v0.10.0 — which transport command: play / pause / next / previous / stop. */
-    MEDIA("media");
+    MEDIA("media"),
+    /** v1.2.0 — when something should happen ("৩টায়", "২০ মিনিট পরে", "কাল সকাল ৯টা"). */
+    TIME("time");
 
     companion object {
         fun from(raw: String?): Slot? {

@@ -39,6 +39,13 @@ object ProviderSelfTestCore {
 
     fun mark(results: List<ProviderTestResult>): Map<TestStatus, Int> = results.groupingBy { it.status }.eachCount()
 
+    /**
+     * v1.2.0 — a self-hosted server that answers `/models` but lists nothing cannot chat. Calling that
+     * "✓ working" was the one place this screen could still lie.
+     */
+    fun refine(provider: AiProvider, status: TestStatus, modelCount: Int): TestStatus =
+        if (provider == AiProvider.CUSTOM && status == TestStatus.OK && modelCount == 0) TestStatus.FAILED else status
+
     /** One line for the settings card. Never claims a provider works when it was not tested. */
     fun summarize(results: List<ProviderTestResult>, bengali: Boolean): String {
         if (results.isEmpty()) return if (bengali) "এখনো কিছু পরীক্ষা করা হয়নি।" else "Nothing tested yet."
@@ -76,15 +83,22 @@ object ProviderSelfTest {
         }
         val client = runCatching { AiSetup.testClient(ctx, p, s) }.getOrNull()
             ?: return ProviderTestResult(p, TestStatus.NO_CREDENTIALS, "no client")
+        val bn = s.uiLanguage == com.voicedock.ai.settings.UiLanguage.BN
         return try {
             // /models is the cheapest authenticated call; it proves the credential and the endpoint.
             val models = client.listModels()
-            ProviderTestResult(
-                p, TestStatus.OK,
-                if (models.isEmpty()) "connected" else if (models.size == 1) models.first() else "${models.size} models",
-            )
+            val status = ProviderSelfTestCore.refine(p, TestStatus.OK, models.size)
+            val ranked = if (p == AiProvider.CUSTOM) LocalServer.rank(models) else models
+            val detail = when {
+                status == TestStatus.FAILED -> LocalServer.diagnose(AiSetup.customKind(s), "no_models", bn)
+                ranked.isEmpty() -> "connected"
+                ranked.size == 1 -> "${ranked.first()}"
+                else -> "${ranked.size} · ${ranked.first()}"
+            }
+            ProviderTestResult(p, status, detail)
         } catch (e: Exception) {
-            ProviderTestResult(p, TestStatus.FAILED, AiSetup.explain(e))
+            // v1.2.0: a local server's failure gets its own actionable sentence, not "no internet".
+            ProviderTestResult(p, TestStatus.FAILED, AiSetup.explainFor(e, s))
         }
     }
 }

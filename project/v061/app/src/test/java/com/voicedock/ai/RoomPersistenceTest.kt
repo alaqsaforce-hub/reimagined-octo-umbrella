@@ -103,6 +103,72 @@ class RoomPersistenceTest {
         ctx.deleteDatabase(name)
     }
 
+    /**
+     * v1.2.0 — the real v3 → v4 upgrade. The v3 file is created with the exact v3 DDL and identity hash
+     * (from app/schemas/…/3.json), then opened at v4 through [Migrations.MIGRATION_3_4]: existing drafts
+     * and memories must survive and the new `reminders` table must be usable.
+     */
+    @Test fun migration3To4KeepsDataAndAddsReminders() {
+        val name = "migrate-3-4.db"
+        ctx.deleteDatabase(name)
+        val file = ctx.getDatabasePath(name)
+        file.parentFile?.mkdirs()
+
+        val legacy = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(file, null)
+        listOf(
+            "CREATE TABLE IF NOT EXISTS `dictation_drafts` (`id` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `rawText` TEXT NOT NULL, `formattedText` TEXT NOT NULL, `segmentsJson` TEXT NOT NULL, `status` TEXT NOT NULL, `language` TEXT NOT NULL, `engine` TEXT NOT NULL, `destination` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_dictation_drafts_status` ON `dictation_drafts` (`status`)",
+            "CREATE INDEX IF NOT EXISTS `index_dictation_drafts_updatedAt` ON `dictation_drafts` (`updatedAt`)",
+            "CREATE TABLE IF NOT EXISTS `kb_documents` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `source` TEXT NOT NULL, `sourceRef` TEXT NOT NULL, `mime` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `charCount` INTEGER NOT NULL, `contentHash` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_kb_documents_updatedAt` ON `kb_documents` (`updatedAt`)",
+            "CREATE INDEX IF NOT EXISTS `index_kb_documents_contentHash` ON `kb_documents` (`contentHash`)",
+            "CREATE TABLE IF NOT EXISTS `kb_chunks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `docId` TEXT NOT NULL, `ord` INTEGER NOT NULL, `text` TEXT NOT NULL)",
+            "CREATE INDEX IF NOT EXISTS `index_kb_chunks_docId` ON `kb_chunks` (`docId`)",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS `kb_chunks_fts` USING FTS4(`text` TEXT NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS `memory_entries` (`id` TEXT NOT NULL, `text` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `source` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_memory_entries_createdAt` ON `memory_entries` (`createdAt`)",
+            "CREATE TABLE IF NOT EXISTS `notif_entries` (`key` TEXT NOT NULL, `pkg` TEXT NOT NULL, `appLabel` TEXT NOT NULL, `sender` TEXT NOT NULL, `text` TEXT NOT NULL, `at` INTEGER NOT NULL, `canReply` INTEGER NOT NULL, `summary` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+            "CREATE INDEX IF NOT EXISTS `index_notif_entries_at` ON `notif_entries` (`at`)",
+            "CREATE INDEX IF NOT EXISTS `index_notif_entries_sender` ON `notif_entries` (`sender`)",
+        ).forEach { legacy.execSQL(it) }
+        legacy.execSQL(
+            "INSERT INTO dictation_drafts (id, createdAt, updatedAt, rawText, formattedText, segmentsJson, status, language, engine, destination) " +
+                "VALUES ('v3draft', 1, 2, 'পুরনো লেখা', 'পুরনো লেখা।', '[]', 'SAVED', 'bn-BD', 'fake', '')",
+        )
+        legacy.execSQL("INSERT INTO memory_entries (id, text, createdAt, source) VALUES ('m0', 'পুরনো স্মৃতি', 3, 'voice')")
+        legacy.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY, identity_hash TEXT)")
+        legacy.execSQL("INSERT OR REPLACE INTO room_master_table (id, identity_hash) VALUES (42, '108b85b026d7e52ae5164e73d36a5b18')")
+        legacy.version = 3
+        legacy.close()
+
+        val db = Room.databaseBuilder(ctx, AppDatabase::class.java, name)
+            .addMigrations(*Migrations.ALL)
+            .allowMainThreadQueries()
+            .build()
+
+        assertEquals("পুরনো লেখা", runBlocking { db.drafts().get("v3draft") }?.rawText)
+        assertEquals("পুরনো স্মৃতি", runBlocking { db.assistant().memories(10) }.first().text)
+
+        // The new table works: insert, list, mark done, and nothing spills over into other rows.
+        runBlocking {
+            db.reminders().upsert(
+                com.voicedock.ai.data.database.ReminderRow(
+                    "r1", "পানি খেতে", 2_000L, 1_000L, com.voicedock.ai.data.database.ReminderStatus.PENDING, "voice",
+                ),
+            )
+            db.reminders().upsert(
+                com.voicedock.ai.data.database.ReminderRow(
+                    "r2", "দুধ আনতে", 5_000L, 1_000L, com.voicedock.ai.data.database.ReminderStatus.PENDING, "voice",
+                ),
+            )
+            assertEquals(listOf("r1", "r2"), db.reminders().pending().map { it.id })
+            db.reminders().setStatus("r1", com.voicedock.ai.data.database.ReminderStatus.DONE)
+            assertEquals(listOf("r2"), db.reminders().pending().map { it.id })
+        }
+        db.close()
+        ctx.deleteDatabase(name)
+    }
+
     /** v0.10.0 — the v0.7-v0.9 JSON files are copied into Room exactly once and never lost. */
     @Test fun legacyJsonIsImportedOnceAndKeptOnDisk() {
         val dir = File(ctx.filesDir, "legacy-import-test").apply { deleteRecursively(); mkdirs() }

@@ -20,11 +20,21 @@ object AiSetup {
 
     fun model(s: AppSettings, p: AiProvider): String? = if (p == AiProvider.GEMINI) s.geminiModel else s.aiModels[p.id]
 
+    /**
+     * v1.2.0 — the self-hosted address as it should actually be called: scheme added if it was missing,
+     * a pasted `/api/tags` or `/chat/completions` trimmed, and `/v1` appended when absent. A typo like
+     * `192.168.0.5:11434` used to end in "invalid URL"; it now works.
+     */
+    fun customUrl(s: AppSettings): String = LocalServer.normalise(s.customAiUrl).url
+
+    fun customKind(s: AppSettings): LocalServer.Kind = LocalServer.kindOf(customUrl(s))
+
     /** Client for a plain key (null for ChatGPT, which needs a signed-in account: see [accountClient]). */
     fun client(ctx: Context, p: AiProvider, key: String? = key(ctx, p), s: AppSettings = SettingsStore.state.value): ChatClient? = when (p) {
         AiProvider.GEMINI -> key?.let { GeminiChatClient(GeminiClient(it)) }
         AiProvider.ANTHROPIC -> key?.let { AnthropicClient(it) }
-        AiProvider.CUSTOM -> s.customAiUrl.takeIf { it.isNotBlank() }?.let { OpenAiCompatClient(p, key, it) }
+        // A self-hosted model gets a 5-minute read timeout: a laptop CPU needs minutes, not "broken".
+        AiProvider.CUSTOM -> customUrl(s).takeIf { it.isNotBlank() }?.let { OpenAiCompatClient(p, key, it, GeminiClient.localHttp) }
         AiProvider.CHATGPT -> null
         else -> key?.let { OpenAiCompatClient(p, it) }
     }
@@ -44,7 +54,7 @@ object AiSetup {
             ?: if (p == AiProvider.CUSTOM) client(ctx, p, null, s) else null
 
     fun blockReason(ctx: Context, p: AiProvider, s: AppSettings = SettingsStore.state.value): String? =
-        AiPolicy.blockReason(p, model(s, p), hasKey(ctx, p), s.customAiUrl, s.allowPaid, s.cloudAllowed, s.localOnly)
+        AiPolicy.blockReason(p, model(s, p), hasKey(ctx, p), customUrl(s), s.allowPaid, s.cloudAllowed, s.localOnly)
 
     /** One usable credential: the legacy key (account == null) or a saved account. */
     private data class Entry(val p: AiProvider, val account: Account?, val paid: Boolean, val order: Int)
@@ -61,11 +71,11 @@ object AiSetup {
             val m = model(s, p)
             val legacy = if (p != AiProvider.CHATGPT && (p == AiProvider.CUSTOM || SecretStore.has(ctx, p.secretName))) {
                 val paid = !p.freeTier || (p == AiProvider.OPENROUTER && m?.endsWith(":free") == false)
-                if (AiPolicy.blockReason(p, m, true, s.customAiUrl, s.allowPaid, s.cloudAllowed, s.localOnly) == null) listOf(Entry(p, null, paid, i)) else emptyList()
+                if (AiPolicy.blockReason(p, m, true, customUrl(s), s.allowPaid, s.cloudAllowed, s.localOnly) == null) listOf(Entry(p, null, paid, i)) else emptyList()
             } else emptyList()
             val accts = AccountOrder.usable(all, p.id, s.allowPaid).mapNotNull { a ->
                 val paid = a.paid || !p.freeTier || (p == AiProvider.OPENROUTER && m?.endsWith(":free") == false)
-                if (AiPolicy.blockReason(p, m, true, s.customAiUrl, s.allowPaid, s.cloudAllowed, s.localOnly, paidOverride = paid) == null) Entry(p, a, paid, i) else null
+                if (AiPolicy.blockReason(p, m, true, customUrl(s), s.allowPaid, s.cloudAllowed, s.localOnly, paidOverride = paid) == null) Entry(p, a, paid, i) else null
             }
             // Free accounts before the legacy key only if the legacy key is paid.
             (legacy + accts).sortedBy { it.paid }
@@ -76,7 +86,7 @@ object AiSetup {
         }
     }
 
-    fun router(ctx: Context): AiRouter { val app = ctx.applicationContext; return AiRouter { candidates(app) } }
+    fun router(ctx: Context): AiRouter { val app = ctx.applicationContext; return AiRouter(candidates = { candidates(app) }) }
 
     /** Cheap check (no decryption): at least one provider passes the policy. */
     fun ready(ctx: Context): Boolean { val s = SettingsStore.state.value; return AiProvider.entries.any { blockReason(ctx, it, s) == null } }
@@ -121,6 +131,7 @@ object AiSetup {
                 else tr("Key ভুল বা অনুমতি নেই", "Invalid key or no permission")
             AiException.Kind.RATE_LIMIT -> if (e.provider == AiProvider.CHATGPT) tr("ChatGPT প্ল্যানের ব্যবহার-সীমা শেষ — chatgpt.com/settings/usage দেখুন", "ChatGPT plan usage limit reached — see chatgpt.com/settings/usage") else tr("সীমা শেষ / ক্রেডিট নেই — পরে চেষ্টা করুন বা অন্য প্রোভাইডার", "Limit reached / no credit — try later or another provider")
             AiException.Kind.NETWORK -> tr("ইন্টারনেট সংযোগ নেই", "No internet connection")
+            AiException.Kind.TIMEOUT -> tr("উত্তর আসতে দেরি হচ্ছে (সময় শেষ)", "Timed out waiting for an answer")
             AiException.Kind.SERVER -> tr("প্রোভাইডারের সার্ভারে সমস্যা", "Provider server error")
             AiException.Kind.BLOCKED -> tr("নিরাপত্তা ফিল্টারে আটকে গেছে", "Blocked by the safety filter")
             AiException.Kind.EMPTY -> tr("খালি উত্তর", "Empty answer")
@@ -128,5 +139,24 @@ object AiSetup {
             AiException.Kind.BAD_REQUEST -> tr("অনুরোধ গ্রহণ হয়নি", "Request rejected")
         } + (e.message?.takeIf { it.isNotBlank() && e.kind != AiException.Kind.NOT_CONFIGURED }?.let { " ($it)" } ?: "")
         else -> e.message ?: e.javaClass.simpleName
+    }
+
+    /**
+     * v1.2.0 — the same sentence, but aware that the failing provider is a server the user runs.
+     * "No internet connection" is actively misleading when Ollama on the LAN is simply not started.
+     */
+    fun explainFor(e: Throwable, s: AppSettings = SettingsStore.state.value): String {
+        if (e is AiException && e.provider == AiProvider.CUSTOM) {
+            val bn = s.uiLanguage == com.voicedock.ai.settings.UiLanguage.BN
+            val code = when (e.kind) {
+                AiException.Kind.TIMEOUT -> "timeout"
+                AiException.Kind.NETWORK -> "unreachable"
+                AiException.Kind.AUTH -> "auth"
+                AiException.Kind.BAD_REQUEST -> if (e.httpCode == 404) "not_found" else null
+                else -> null
+            }
+            if (code != null) return LocalServer.diagnose(customKind(s), code, bn)
+        }
+        return explain(e)
     }
 }

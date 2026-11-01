@@ -18,7 +18,13 @@ feature is only "done" when a test proves it, not when the changelog says so.
 
 ---
 
-## v1.2.0 — "সময়মতো কাজ" (scheduling + search) — next
+## v1.2.0 — "সময়মতো কাজ" (scheduling + search) — **SHIPPED 2026-11-01, partly**
+
+Shipped in v1.2.0 (see `V1.2.0-CHANGES.md`): the reminder half of scheduling, the reliability work on
+providers/local models, and the verifiable permission catalog. **Carried forward to v1.2.1** — scheduled
+*messages* (a named person, a topic, a chosen time) and internet search, for the reason written there:
+auto-sending needs a send path that can be trusted in the background, and the app will not ship a button
+that silently does nothing.
 
 **1. Scheduled jobs (reminders and messages sent later)**
 

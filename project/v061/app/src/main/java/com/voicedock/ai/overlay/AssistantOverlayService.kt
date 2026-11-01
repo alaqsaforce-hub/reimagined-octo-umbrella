@@ -45,6 +45,9 @@ import com.voicedock.ai.insertion.ClipboardInsertion
 import com.voicedock.ai.insertion.InsertAccessibilityService
 import com.voicedock.ai.insertion.TextInserter
 import com.voicedock.ai.permissions.Permissions
+import kotlinx.coroutines.runBlocking
+import com.voicedock.ai.schedule.Reminders
+import com.voicedock.ai.schedule.TimeWords
 import com.voicedock.ai.settings.SettingsStore
 import com.voicedock.ai.settings.UiLanguage
 import com.voicedock.ai.settings.tr
@@ -701,6 +704,9 @@ class AssistantOverlayService : LifecycleService() {
         val candidates: Map<Slot, List<String>> = when {
             // v0.10.0: "গান" alone is ambiguous between play and pause — offer the actions, never guess.
             spec.intent == CmdIntent.MEDIA && spec.slot(Slot.MEDIA).isNullOrBlank() -> mapOf(Slot.MEDIA to MediaText.choices())
+            // v1.2.0: "কখন?" gets three real examples instead of an empty card.
+            spec.intent == CmdIntent.REMINDER_ADD && spec.slot(Slot.TIME).isNullOrBlank() ->
+                mapOf(Slot.TIME to listOf("৩টায়", "সন্ধ্যা ৭টায়", "২০ মিনিট পরে"))
             spec.intent == CmdIntent.APP_LAUNCH && spec.slot(Slot.APP).isNullOrBlank() -> emptyMap()
             spec.intent == CmdIntent.APP_LAUNCH -> {
                 val hits = launcher.resolve(spec.slot(Slot.APP).orEmpty())
@@ -989,6 +995,48 @@ class AssistantOverlayService : LifecycleService() {
                         }
                     }
                 }
+            }
+
+            CmdIntent.REMINDER_ADD -> {
+                val goal = spec.slot(Slot.TEXT).orEmpty()
+                val timeText = spec.slot(Slot.TIME) ?: spec.raw
+                val now = System.currentTimeMillis()
+                val guess = TimeWords.parse(timeText, now)
+                if (guess == null) {
+                    done(
+                        tr(
+                            "কখন মনে করিয়ে দেব ঠিক বুঝিনি — ‘৩টায়’ বা ‘২০ মিনিট পরে’ বলুন।",
+                            "I did not catch the time — say ‘at 3’ or ‘in 20 minutes’.",
+                        ),
+                        false, "reminder:no_time",
+                    )
+                } else if (goal.isBlank()) {
+                    done(tr("কী মনে করিয়ে দেব?", "Remind you about what?"), false, "reminder:no_goal")
+                } else {
+                    // The command path is not a coroutine; a single local SQLite insert is milliseconds, so it
+                    // runs on the IO dispatcher and blocks briefly rather than leaving the answer unanswered.
+                    val row = runCatching {
+                        runBlocking(kotlinx.coroutines.Dispatchers.IO) { Reminders.add(this@AssistantOverlayService, goal, guess.atMillis, source) }
+                    }.getOrNull()
+                    if (row == null) {
+                        done(tr("রিমাইন্ডার সেভ করা যায়নি।", "Could not save the reminder."), false, "reminder:save")
+                    } else {
+                        val exact = Reminders.exactAllowed(this)
+                        val msg = Reminders.confirmText(row, bn, now, exact)
+                        done(msg, true, "reminder:add")
+                        if (SettingsStore.state.value.speakResults) speaker.speak(msg, bn)
+                        if (!Permissions.notifications(this)) _dict.value = _dict.value.copy(needsSetup = true)
+                    }
+                }
+            }
+
+            CmdIntent.REMINDER_LIST -> {
+                val rows = runCatching {
+                    runBlocking(kotlinx.coroutines.Dispatchers.IO) { Reminders.pending(this@AssistantOverlayService) }
+                }.getOrDefault(emptyList())
+                val text = Reminders.listText(rows, bn)
+                done(text, true, "reminder:list")
+                if (SettingsStore.state.value.speakResults) speaker.speak(text, bn)
             }
 
             CmdIntent.UNDO -> {

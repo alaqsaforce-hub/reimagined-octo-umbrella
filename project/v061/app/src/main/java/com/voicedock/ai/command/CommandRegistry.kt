@@ -34,6 +34,9 @@ object CommandRegistry {
         // v0.10.0: media runs over the active MediaSession (any player), no per-app settings.
         Intent.MEDIA to IntentMeta(setOf(Slot.MEDIA), false, true, "মিউজিক নিয়ন্ত্রণ", "Control the music"),
         Intent.UNDO to IntentMeta(emptySet(), false, true, "শেষ কাজটি ফিরিয়ে নেওয়া", "Undo the last action"),
+        // v1.2.0: a reminder is harmless (it only speaks later), so it never asks for confirmation.
+        Intent.REMINDER_ADD to IntentMeta(setOf(Slot.TEXT, Slot.TIME), false, true, "মনে করিয়ে দেওয়া", "Set a reminder"),
+        Intent.REMINDER_LIST to IntentMeta(emptySet(), false, true, "রিমাইন্ডারের তালিকা", "List reminders"),
         Intent.UNKNOWN to IntentMeta(setOf(Slot.QUERY), false, false, "বোঝা যায়নি", "Not understood"),
     )
 
