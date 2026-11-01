@@ -75,6 +75,15 @@ class InsertAccessibilityService : AccessibilityService() {
         return NodeResult(InsertResult.REJECTED, pkg)
     }
 
+    /**
+     * v1.3.3 — send a message through the chat that is already open: type into its composer and press its own
+     * Send button. Conservative by design; see [com.voicedock.ai.send.SendCore] for the decision and the words.
+     */
+    fun sendInOpenChat(text: String, expectedPackage: String?, ctx: android.content.Context): com.voicedock.ai.send.SendResult =
+        com.voicedock.ai.send.AccessibilitySender.perform(
+            this, text, expectedPackage, com.voicedock.ai.send.AccessibilitySender.screenSummary(this),
+        )
+
     /** Display capture used by the separately initiated legacy agent (Android 11+). */
     fun captureScreen(onResult: (Bitmap?) -> Unit) {
         if (Build.VERSION.SDK_INT < 30) { onResult(null); return }

@@ -33,8 +33,12 @@ object Feature {
     const val MEDIA = "media"
     const val REMINDERS = "reminders"
     const val BACKGROUND = "background"
+    /** v1.3.0 — dual SIM: which SIM, which own number, which SIM a call goes out on. */
+    const val SIM = "sim"
+    /** v1.3.0 — Termux shell (and proot Ubuntu / OpenCode inside it). */
+    const val TERMUX = "termux"
 
-    val all = listOf(MIC, WAKE, BUBBLE, SCREEN, MESSAGES, CALLS, MEDIA, REMINDERS, BACKGROUND)
+    val all = listOf(MIC, WAKE, BUBBLE, SCREEN, MESSAGES, CALLS, MEDIA, REMINDERS, BACKGROUND, SIM, TERMUX)
 
     fun label(f: String, bengali: Boolean): String = when (f) {
         MIC -> if (bengali) "মাইক/ডিক্টেশন" else "Microphone / dictation"
@@ -46,6 +50,8 @@ object Feature {
         MEDIA -> if (bengali) "মিউজিক নিয়ন্ত্রণ" else "Media control"
         REMINDERS -> if (bengali) "মনে করিয়ে দেওয়া" else "Reminders"
         BACKGROUND -> if (bengali) "ব্যাকগ্রাউন্ডে চালু থাকা" else "Running in the background"
+        SIM -> if (bengali) "সিম ও নিজের নম্বর" else "SIMs and own numbers"
+        TERMUX -> if (bengali) "টার্মাক্স কমান্ড" else "Termux commands"
         else -> f
     }
 }
@@ -73,6 +79,10 @@ object PermissionCatalog {
     private const val CALL_PHONE = "android.permission.CALL_PHONE"
     private const val ANSWER_PHONE_CALLS = "android.permission.ANSWER_PHONE_CALLS"
     private const val READ_PHONE_STATE = "android.permission.READ_PHONE_STATE"
+    private const val READ_PHONE_NUMBERS = "android.permission.READ_PHONE_NUMBERS"
+    private const val READ_BASIC_PHONE_STATE = "android.permission.READ_BASIC_PHONE_STATE"
+    /** Termux's own permission — not android.permission.*, so the audit treats it by its catalog row. */
+    const val TERMUX_RUN_COMMAND = "com.termux.permission.RUN_COMMAND"
     private const val REQUEST_IGNORE_BATTERY = "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
     private const val SCHEDULE_EXACT_ALARM = "android.permission.SCHEDULE_EXACT_ALARM"
     private const val RECEIVE_BOOT_COMPLETED = "android.permission.RECEIVE_BOOT_COMPLETED"
@@ -181,6 +191,30 @@ object PermissionCatalog {
             "ডাক শুনলে একবার কম্পন", "one short buzz when it hears the wake word", listOf(Feature.WAKE)),
         PermissionItem(INTERNET, INTERNET, Access.NORMAL, "ইন্টারনেট", "Internet",
             "AI প্রোভাইডার ও অনলাইন স্পিচ", "AI providers and online speech", listOf(Feature.MIC, Feature.MESSAGES)),
+        // ---- v1.3.0 device access -------------------------------------------------------------------
+        PermissionItem(
+            READ_PHONE_NUMBERS, READ_PHONE_NUMBERS, Access.RUNTIME,
+            "ফোন নম্বর পড়া", "Read phone numbers",
+            "আপনার নিজের নম্বর বলা ও কোন সিমে কল যাবে তা ঠিক করার জন্য",
+            "telling you your own number and aiming a call at a chosen SIM",
+            listOf(Feature.CALLS, Feature.SIM),
+        ),
+        PermissionItem(
+            READ_BASIC_PHONE_STATE, READ_BASIC_PHONE_STATE, Access.NORMAL,
+            "সিমের মৌলিক তথ্য", "Basic phone state",
+            "কয়টি সিম আছে, কোনটি সচল — শুধু এইটুকু জানার জন্য (API 33+)",
+            "how many SIMs exist and which are active — nothing more (API 33+)",
+            listOf(Feature.SIM),
+        ),
+        PermissionItem(
+            TERMUX_RUN_COMMAND, TERMUX_RUN_COMMAND, Access.NORMAL,
+            "টার্মাক্সে কমান্ড", "Run commands in Termux",
+            "টার্মাক্স (এবং তার ভেতরের proot Ubuntu / OpenCode) চালানোর জন্য — শুধু টার্মাক্সে " +
+                "‘allow-external-apps’ চালু থাকলে কাজ করবে",
+            "running commands in Termux (and proot Ubuntu / OpenCode inside it) — works only if Termux has " +
+                "‘allow-external-apps’ enabled",
+            listOf(Feature.TERMUX),
+        ),
     )
 
     fun byKey(key: String): PermissionItem? = items.firstOrNull { it.key == key }

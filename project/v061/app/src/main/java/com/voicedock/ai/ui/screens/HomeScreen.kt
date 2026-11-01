@@ -49,6 +49,8 @@ fun HomeScreen(
     openAgent: () -> Unit = {},
     openKnowledge: () -> Unit = {},
     openDrafts: () -> Unit = {},
+    /** v1.3.1 — the voice-to-voice surface. */
+    openVoice: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val ui by controller.ui.collectAsState()
@@ -86,6 +88,10 @@ fun HomeScreen(
         Button(onClick = startBubble, modifier = Modifier.fillMaxWidth()) { Text(tr("সহকারী বাবল চালু করুন", "Start assistant bubble")) }
         OutlinedButton(onClick = openWorkspace, modifier = Modifier.fillMaxWidth()) { Text(tr("এখানেই ডিক্টেশন করুন", "Dictate here in the app")) }
         OutlinedButton(onClick = openAgent, modifier = Modifier.fillMaxWidth()) { Text(tr("🤖 এজেন্ট — স্ক্রিন পড়ে কাজ করে দেবে", "🤖 Agent — does tasks on screen")) }
+        // v1.3.1 — voice-to-voice, in the same place as the other entry points.
+        OutlinedButton(onClick = openVoice, modifier = Modifier.fillMaxWidth()) {
+            Text(tr("🎧 ভয়েস মোড — বলুন, লেখা নিচে আসবে", "🎧 Voice mode — speak, the words appear"))
+        }
 
         Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(tr("আজকের ভার্সন (v0.6.0)", "This version (v0.6.0)"), style = MaterialTheme.typography.titleMedium)

@@ -46,6 +46,12 @@ data class DictationBubbleState(
     val choices: List<String> = emptyList(),
     /** v0.10.0 — non-blank when the last action can honestly be reversed; the ↩ chip is shown. */
     val undoLabel: String = "",
+    /** v1.3.1 — the composed draft, shown in its own card. Empty = no card. Nothing is inserted without a tap. */
+    val draftText: String = "",
+    /** v1.3.1 — where the draft will land ("WhatsApp Business"), or "" for "the app in front". */
+    val draftTarget: String = "",
+    /** v1.3.1 — the honest insert note (accessibility vs clipboard). */
+    val draftNote: String = "",
 )
 
 /** Label for one action chip (bn/en). */

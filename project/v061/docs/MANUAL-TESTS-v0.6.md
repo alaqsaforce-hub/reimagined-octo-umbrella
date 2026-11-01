@@ -318,3 +318,142 @@ Setup: floating icon visible, Accessibility on, anything else open (e.g. the hom
     answer must say the search server timed out / cannot be reached, not "no results".
 11. Say **"ইউটিউবে রবীন্দ্রসংগীত খোঁজো"** → the YouTube app (or browser) must open on those results and the
     answer must tell you to tap the first video — it must not claim it played anything.
+
+---
+
+# v1.3.0 — device access, chat instances, Termux, task board
+
+Needs a real **dual-SIM** phone for 1–4; 5–7 need only one chat app; 8–11 need Termux (optional).
+
+**SIMs and own numbers**
+1. Settings → **ডিভাইস অ্যাক্সেস → সিম** must list every active SIM with carrier and a **masked** own number
+   (`••••5678`). If the numbers are blank the row must say "পড়া যাচ্ছে না (অনুমতি নেই…)" — never a fake number.
+2. Ask **"আমার নম্বর কত"** → the same masked numbers, spoken; the full number must **never** appear in the bubble.
+3. With the default-call SIM set to SIM 2, say **"সিম ১ দিয়ে রহিমকে ফোন করো"** → the call must start on SIM 1
+   (check the in-call screen). If the phone can't pin the account, the answer must say
+   "ঠিক কোন সিম দিয়ে যাবে নিশ্চিত করা যায়নি … সিস্টেমের ডিফল্ট সিমে কল হচ্ছে" — a wrong-SIM call **without**
+   that sentence is a failure.
+4. Say **"সিম ৩ দিয়ে ফোন করো"** on a 2-SIM phone → must answer "সিম ৩ নেই — আছে: সিম ১, সিম ২" and **not dial**.
+
+**Caller identity**
+5. While a saved contact is calling, say **"কে ফোন করছে"** → "নাম ফোন করছে (কন্টাক্টে সেভ করা আছে)".
+   Repeat with an unknown number → "অপরিচিত নম্বর … (সেভ করা নেই)". With no call ringing → "এখন কোনো কল আসছে না".
+
+**Chat instances**
+6. Settings → **চ্যাট অ্যাপ ও ক্লোন** must list WhatsApp Business / a Dual Messenger clone as separate rows with
+   "… (ক্লোন)". Say **"বিজনেস হোয়াটসঅ্যাপ খোলো"** → Business opens; **"ক্লোন করা হোয়াটসঅ্যাপ খোলো"** → the clone opens.
+7. Plain **"হোয়াটসঅ্যাপ খোলো"** must still behave as before (normal app launch).
+
+**Termux (off by default)**
+8. With Termux installed and `allow-external-apps=true`, turn the toggle on, press **টেস্ট: termux-info** →
+   the answer must be "টার্মাক্সে পাঠানো হলো…" and Termux must show the output. Turn the toggle **off** and say
+   **"টার্মাক্সে ls চালাও"** → must refuse and point at Settings, not dispatch.
+9. Say **"টার্মাক্সে rm -rf / চালাও"** → must be refused **even after** confirming. Say
+   **"টার্মাক্সে pkg install python দাও"** → must show a confirmation card first.
+
+**Task board**
+10. Say **"কাজ দাও: ওয়াইফাই চালু করো; তারপর হোয়াটসঅ্যাপ খোলো"** → the bubble lists both steps and the task
+    appears in Settings → কাজের বোর্ড. Steps must run **one after another** with ✓ as each finishes.
+11. Add a task from Settings with a step that cannot work (e.g. "অজানা অ্যাপ খোলো") → that step must fail, be
+    retried **once**, then the task shows ✗ with a reason — it must not be marked ✓.
+12. Press **চলমান বাতিল** while a task runs → remaining steps become "—" and nothing else fires.
+13. Kill the app mid-task and reopen → the task list must still be there (status QUEUED/PAUSED), and
+    **চালাও** must continue from the first unfinished step.
+
+---
+
+# v1.3.1 — voice-to-voice surface, draft card, floating calls
+
+Any phone. 2, 4 and 7 decide whether the promise holds.
+
+**Voice mode**
+1. Home → **🎧 ভয়েস মোড** (or say "ভয়েস মোড খোলো") must open one column of turns with an orb at the bottom.
+   Tap the orb → it turns solid and the live transcript grows while speaking.
+2. Say **"হোয়াটসঅ্যাপ খোলো"**, then tap **⚡ কমান্ড** in the draft card → WhatsApp opens **and** a new pair of
+   turns appears: your sentence, then the real result. The reply must show the intent and confidence, not a
+   canned sentence.
+3. Ask something impossible (e.g. "সিম ৩ দিয়ে কল দাও" on a 2-SIM phone) → the reply turn must show the honest
+   failure, not a generic "সম্পন্ন".
+
+**Draft card (the core promise)**
+4. Open WhatsApp's message box, dictate a sentence in the bubble → a **খসড়া প্রস্তুত** card must appear with the
+   text and the note "কার্সর যে ঘরে আছে সেখানে বসবে". **Nothing may be typed into WhatsApp yet.**
+5. Tap **ঢোকাও** → the text lands in WhatsApp and the toast reports what really happened.
+   With Accessibility **off**, the note must change to "Accessibility চালু নেই — লেখাটা কপি হবে…" and tapping
+   ঢোকাও must copy, not claim insertion.
+6. Say **"ঢোকাও"** with a draft on screen → same result as tapping. Say **"খসড়া বাতিল"** → the card disappears
+   and nothing is inserted. Say **"ওখানে বসাও না, পরে করব"** → **nothing** may be inserted.
+7. Tap **রাখো** → the card closes and the text is still in **ড্রাফট ইতিহাস**.
+
+**Floating calls**
+8. Say **"সিম ১ দিয়ে রহিমকে ফোন করো"** → the call screen opens **and** the bubble stays on top with the note
+   "বাবল খোলা থাকছে…". Say **"কেটে দাও"** during the call → it must decline via the documented route or say
+   honestly that it could not.
+9. While a call is up, say **"কাজের তালিকা দেখাও"** → the bubble must answer without closing.
+
+---
+
+# v1.3.2 — chat roll-up and YouTube link summary
+
+**Chat roll-up** (needs Notification access + a real incoming chat)
+1. Get 2–3 messages from one contact, then say **"রহিমের মেসেজের সারমর্ম বলো"** → the bubble must count them,
+   quote the last few, and (if the app offers reply) mention how to reply.
+2. With WhatsApp previews **off** (Chat → Settings → turn off message preview), send again and repeat → the answer
+   must say "লেখা দেখা যাচ্ছে না … সারমর্ম বানানো হয়নি" and must **not** contain any made-up message text.
+3. Say **"আজকের মেসেজের সারমর্ম"** → it must still be the day digest (a list of who wrote), not one chat.
+4. Say **"summarise my messages"** → same, day digest. Ask about someone who did not write → honest "পাওয়া যায়নি".
+
+**YouTube link**
+5. Copy a `youtu.be/…` or `youtube.com/watch?v=…` link and say **"এই লিংকের সারমর্ম বলো"** → the title, length
+   and channel must appear, and the answer must contain **"ক্যাপশন (সাবটাইটেল) পড়া যায়নি"**.
+   With an AI key configured the description is summarised; the caption line stays either way.
+6. Put the phone in airplane mode and ask again → a clear network failure, never a blank or invented title.
+
+---
+
+# v1.3.3 — accessibility pass: sending, and the transcript panel
+
+Needs Accessibility enabled for VoiceDock. 2, 3 and 5 decide whether the promise holds.
+
+**Sending without a notification**
+1. Say **"রহিমকে বলো আমি কাল আসব"** while the WhatsApp **chat with Rahim is open** → the message must appear
+   in the composer and be sent by the app's own Send button; the bubble must say
+   "‘রহিম’ কে পাঠানো হয়েছে ✓".
+2. Same command with a **different chat** (or the WhatsApp list) in front → it must **not** type anywhere:
+   the answer says the app in front is not that chat, and the text is copied.
+3. Say it while **Instagram/Chrome** is open → nothing may be typed into a search box; the answer must be the
+   honest refusal, and the text must be on the clipboard for manual pasting.
+4. A contact who has **no live notification** but whose chat is open → the accessibility route is what makes it
+   work; with Accessibility **off** the answer must say so instead of claiming it was sent.
+
+**Transcript panel**
+5. Open a YouTube video with captions → "…" → **Show transcript**, then say **"ট্রান্সক্রিপ্ট পড়ে সারমর্ম দাও"** →
+   the answer must start with "📝 স্ক্রিনের ট্রান্সক্রিপ্ট থেকে" and quote/summarise the real captions.
+6. Same command with the **panel closed** → instructions to open it ("Show transcript"), never a summary of
+   something else.
+7. Say the same while a **chat app** is in front → nothing from the chat may be treated as a transcript.
+
+**Regression**
+8. **"এই লিংকের সারমর্ম বলো"** + a `youtu.be` link must still take the v1.3.2 route (title/description, and the
+   "ক্যাপশন পড়া যায়নি" line), not the panel route.
+
+## v1.3.4 — calendar (read + add)
+
+1. Connectors screen → Google connected → tap **"ক্যালেন্ডার যোগ করুন (পড়া ও নতুন ইভেন্ট)"** → Google
+   consent lists Calendar access → back in the app the line says `✓ ক্যালেন্ডারও সংযুক্ত…`.
+2. Say **"আজকের ক্যালেন্ডার দেখাও"** with a real event today → the reply lists `• HH:MM — title
+   (duration, location)`, Bengali numerals, and is spoken aloud when speak-results is on.
+3. Say **"কালকের ক্যালেন্ডার"** → the answer names tomorrow's date, not today's.
+4. Ask a day with nothing on it → **"… কোনো ইভেন্ট নেই।"** — this is a correct answer, not a failure.
+5. Say **"শুক্রবারের ক্যালেন্ডার"** on any day → it names শুক্রবার and its date; check it is the
+   *coming* Friday.
+6. Say **"কাল ৩টায় ডাক্তারের অ্যাপয়েন্টমেন্ট ক্যালেন্ডারে যোগ করো"** → confirmation card shows the
+   title, the weekday, the date and `15:00–16:00` **before** anything is sent. Cancel → nothing is in
+   the calendar.
+7. Confirm the same sentence → the reply is `✓ … যোগ হয়েছে`, and the event really appears in the
+   phone's Google Calendar app at 3 pm for 1 hour.
+8. Say **"ক্যালেন্ডারে যোগ করো মিটিং"** (no time) → it asks for the time and **books nothing**.
+9. Turn mobile data off and read the calendar → an honest "internet নেই" sentence, no stack trace,
+   no false list.
+10. Force-stop the app, reopen, read the calendar → it says the Google connection is missing and
+    points at Settings (the token is memory-only by design), instead of failing silently.

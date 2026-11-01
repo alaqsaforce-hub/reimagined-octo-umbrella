@@ -160,6 +160,29 @@ fun ConnectorsScreen() {
                         color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 } else {
                     Text(tr("সংযুক্ত: ", "Connected: ") + s.googleAccount.ifBlank { "Google" }, style = MaterialTheme.typography.bodySmall)
+                    // v1.3.4 — the calendar scope is added here, in the same consent flow. One token covers all
+                    // three scopes because GoogleAuth keeps a single in-memory token; asking for calendar alone
+                    // would silently drop the Gmail/Drive access the user already granted.
+                    FilledTonalButton(enabled = activity != null && !busy, onClick = {
+                        scope.launch {
+                            val scopes = listOf(
+                                GoogleRest.SCOPE_DRIVE_READONLY, GoogleRest.SCOPE_GMAIL_READONLY,
+                                com.voicedock.ai.calendar.CalendarClient.SCOPE_CALENDAR,
+                            )
+                            when (val o = GoogleAuth.authorize(activity!!, scopes)) {
+                                is GoogleAuth.Outcome.NeedsConsent -> consent.launch(IntentSenderRequest.Builder(o.sender).build())
+                                is GoogleAuth.Outcome.Token -> {
+                                    onAuth(o)
+                                    status = tr("✓ ক্যালেন্ডারও সংযুক্ত — ‘আজকের ক্যালেন্ডার’ বলে দেখুন",
+                                        "✓ Calendar connected too — say “what's on my calendar today”")
+                                }
+                                else -> onAuth(o)
+                            }
+                        }
+                    }) { Text(tr("ক্যালেন্ডার যোগ করুন (পড়া ও নতুন ইভেন্ট)", "Add calendar (read + new events)")) }
+                    Text(tr("ক্যালেন্ডারে অ্যাপ শুধু নতুন ইভেন্ট যোগ করে; কিছু মোছে না বা বদলায় না।",
+                        "The app only adds new events to the calendar; it never deletes or edits anything."),
+                        style = MaterialTheme.typography.labelSmall)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(value = driveQuery, onValueChange = { driveQuery = it }, singleLine = true, modifier = Modifier.weight(1f), label = { Text(tr("Drive-এ খুঁজুন", "Search Drive")) })
                         TextButton(enabled = !busy, onClick = { run(tr("খোঁজা হচ্ছে…", "Searching…")) { driveFiles = withContext(Dispatchers.IO) { GoogleRest(gToken!!).driveSearch(driveQuery) }; tr("${driveFiles.size}টি ফাইল", "${driveFiles.size} files") } }) { Text(tr("খুঁজুন", "Search")) }

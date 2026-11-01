@@ -517,3 +517,134 @@ that decide whether the promise holds.
 **Next:** v1.3.0 — WhatsApp/chat summaries from the notification log, YouTube link summary via captions,
 calendar (read + add with confirmation), and the accessibility pass that makes a scheduled message truly silent
 even without a live notification.
+
+## v1.3.0 "সিম, ক্লোন আর কাজ" (built & verified 2026-11-01)
+
+First half of the "platform" request — the part the user put first: **device access**, then a **background task
+board**. The ChatGPT-like voice surface + floating draft card is the next increment (v1.3.1) and is **not**
+advertised in this build.
+
+* **SIMs** — `device/SimCore` (pure) + `device/DeviceAccess`. "সিম ২ দিয়ে রহিমকে ফোন করো" parses the slot out of
+  the sentence, strips the SIM words from the name, resolves the contact and aims the call with
+  `TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE`. "আমার নম্বর কত" answers per SIM with the number **masked**
+  (`••••5678`). Where Android cannot say which internal account belongs to SIM 2, the app says exactly that and
+  calls on the system default — no silent wrong-SIM dial, ever.
+* **Caller identity** — "কে ফোন করছে" reads the live ringing notification, resolves the number against the phone
+  book and answers *"রহিম ফোন করছে (কন্টাক্টে সেভ করা আছে)"* / *"অপরিচিত নম্বর … (সেভ করা নেই)"*; with nothing
+  ringing it says so.
+* **Chat instances** — `device/ChatInstanceCore`: every instance is `package@userId`, discovered through
+  `LauncherApps` per profile, because that is the only way to see a Dual Messenger / work-profile clone.
+  "বিজনেস হোয়াটসঅ্যাপ খোলো" / "ক্লোন করা হোয়াটসঅ্যাপ খোলো" open that exact instance; ambiguity **asks**; a clone
+  gets no direct-reply promise. Plain "হোয়াটসঅ্যাপ খোলো" still behaves as before.
+* **Termux** — `agents/TerminalPolicy` (pure, tested): off by default; read-only commands run silently; anything
+  that can change the phone confirms every time; `rm -rf /`, `mkfs`, `dd of=/dev/`, `reboot`, `curl | sh` are
+  refused even when confirmed. Dispatch goes through Termux's own `RUN_COMMAND` service only, and the answer
+  says **"পাঠানো হলো"**, never "ran" — `allow-external-apps` is Termux's side and the app explains it.
+* **Task board** — a task is a list of ordinary sentences; each step goes through the **same** command pipeline a
+  spoken command uses (`ACTION_RUN_TEXT`), so permissions, confirmations and honest failures all apply inside a
+  task. The runner owns ordering, persistence (`filesDir/tasks.json`), retry-once-then-fail and reporting; a step
+  that never answers within 90 s leaves the task PAUSED rather than falsely done. Add/run/cancel from
+  Settings → কাজের বোর্ড.
+* **Command layer** — seven new intents (`sim.numbers`, `identity.who`, `chat.open`, `termux.run`, `task.add`,
+  `task.list`, `task.cancel`), two new slots (`SIM`, `CHAT`), registry + pipeline `describe` + exhaustive slot
+  question lines updated.
+* **Permissions** — `READ_PHONE_NUMBERS`, `READ_BASIC_PHONE_STATE`, `com.termux.permission.RUN_COMMAND` added to
+  the manifest **and** to `PermissionCatalog` (the v1.2.0 bidirectional audit test enforces both), plus
+  `<queries><package com.termux/>` and new `Feature.SIM` / `Feature.TERMUX`.
+
+**Status:** **466 tests / 0 failures / 61 suites** (30 new), lint **0 errors / 51 warnings** (3 new, all
+reviewed and documented in the build report), APK `versionCode 22 / 1.3.0`, minSdk 26, v2-signed, 16 KB-aligned,
+19,179,857 B, SHA-256 `df44e8ef…`. Device checks: 13 in `MANUAL-TESTS-v0.6.md` § v1.3.0 — 3, 9, 10 and 13 are
+the ones that decide whether the promise holds.
+
+**Next:** v1.3.1 — the ChatGPT-like voice-to-voice surface and the floating **draft** card (show the draft, insert
+on command), plus the accessibility pass for silent send.
+
+## v1.3.1 "বলো, দেখো, তারপর বসাও" (built & verified 2026-11-01)
+
+The third item of the platform request — the one v1.3.0 deliberately withheld rather than fake.
+
+* **Voice-to-voice surface** — `ui/screens/VoiceScreen.kt`: one column of turns (your words, then what actually
+  happened), live transcript, level-responsive orb, `নতুন / পরিষ্কার / থামাও`, reached from Home, from
+  "ভয়েস মোড খোলো", or from the bubble. The assistant's turn is the **real** record from `CommandLog`
+  (✓/✗ + intent + parse source + confidence), not generated copy — so an honest failure reads as a failure.
+* **Draft card** — `draft/DraftCore.kt` (pure, tested) composes the sentence into a draft, names the route
+  (Accessibility vs clipboard) and the target **only when it is known**, and carries
+  `requiresExplicitInsert = true` as a constant so no future caller can start auto-inserting. The bubble shows
+  **ঢোকাও / রাখো / বাতিল**; by voice only on an exact request (`ঢোকাও`, `বসাও`, `খসড়া বাতিল`), never on a
+  sentence that merely mentions it.
+* **Calls stay floating** — after a placed call the bubble is kept and says so ("বাবল খোলা থাকছে — কল চলাকালীনও
+  ‘কেটে দাও’ বা অন্য কমান্ড দিতে পারবেন"); the service has no auto-hide timer (verified), so nothing closes it
+  mid-call.
+* **Command layer** — `draft.insert`, `draft.discard`, `voice.open`; the draft rules run first in the offline
+  parser (so "বসাও" is not mistaken for "open"), with three regression assertions on the older grammars.
+
+**Status:** **477 tests / 0 failures / 63 suites** (11 new), lint **0 errors / 51 warnings** (none new),
+APK `versionCode 23 / 1.3.1`, minSdk 26, v2-signed, 16 KB-aligned, 19,162,870 B, SHA-256 `243492a3…`.
+Device checks: 9 in `MANUAL-TESTS-v0.6.md` § v1.3.1 (2, 4 and 7 are the decisive ones).
+
+**Next:** content summaries (chat roll-up from the notification log, YouTube link via captions) and the calendar,
+then the accessibility pass that makes a scheduled message silent even without a live notification.
+
+## v1.3.2 "মেসেজ আর লিংকের সারমর্ম" (built & verified 2026-11-01)
+
+The two summary features carried over from the v1.3 plan, both built so the gap is part of the answer.
+
+* **One chat's roll-up** — `notify/ChatRollup.kt` (pure, sibling of the v0.8 `Digest`) groups the notification log
+  per `sender + package`, keeps the last 8 readable messages, counts everything, and remembers whether any
+  notification arrived **without** text. New intent `msg.thread` ("রহিমের মেসেজের সারমর্ম বলো"). Hidden
+  previews are stated ("লেখা দেখা যাচ্ছে না … সারমর্ম বানানো হয়নি"), never filled; a model may only *add* a
+  summary when 3+ readable messages exist, and its prompt forbids inventing the rest.
+* **YouTube link summary** — `summaries/YtSummary.kt`: pure `YtSummaryCore` (link shapes, Open Graph /
+  `itemprop` / `ytInitialPlayerResponse` metadata, `PT1H2M3S` durations) + one-request `YtSummary.fetch` with
+  honest failure codes. Every answer ends with "ক্যাপশন (সাবটাইটেল) পড়া যায়নি …" — the transcript needs the
+  accessibility pass, and no proxy is assumed.
+* **Command layer** — `msg.thread`, `yt.summary`; the YouTube link rule runs before the search rule, and four
+  ordering assertions keep the day digest / read-aloud / YouTube-search grammars intact.
+
+**Status:** **494 tests / 0 failures / 66 suites** (17 new), lint **0 errors / 51 warnings** (none new),
+APK `versionCode 24 / 1.3.2`, minSdk 26, v2-signed, 16 KB-aligned, 19,248,241 B, SHA-256 `3d9bebb5…`.
+Device checks: 6 in `MANUAL-TESTS-v0.6.md` § v1.3.2. Five failures during this increment were fixed in the
+**product** (itemprop metadata, and the day digest being stolen by the new chat rule twice — including a
+suffix-stripping bug that turned "আজকের" into a fake name "আজক").
+
+**Next:** the accessibility pass (silent send without a live notification, and the YouTube transcript panel that
+would let the link summary read real captions), then calendar read/add.
+
+## v1.3.3 "অ্যাক্সেসিবিলিটি পাস" (built & verified 2026-11-01)
+
+The two caveats this project had carried since v0.8 and v1.3.2 are now closed, without loosening any limit.
+
+* **Silent send without a live notification** — `send/SendCore.kt` (pure decisions) + `send/AccessibilitySender.kt`
+  (node tree): type into the open chat and press the app's own Send. Guards: the app in front must match, the
+  field must look like a *message* box (a search box is refused), a send button must be found in any of the
+  languages apps ship ("Send location" is explicitly **not** one), secure/finance/secret text refused, and
+  **SENT is claimed only when the composer emptied**. Every other outcome puts the text on the clipboard and
+  says what stopped it. Hooked into `MSG_REPLY` when the notification offers no reply action.
+* **Transcript panel reading** — `summaries/ScreenTranscript.kt` + intent `yt.transcript`: reads the YouTube
+  screen, strips timestamps and panel chrome, drops duplicates, caps at 60 lines / 6,000 chars, and only calls
+  itself a transcript when the evidence says so (a "transcript" label or 5+ timestamp lines). With an AI
+  provider the lines are summarised ("never add anything not in the transcript"); without one the lines are
+  shown. Panel closed → instructions ("Show transcript"), panel empty → "this video has no captions".
+
+**Status:** **507 tests / 0 failures / 69 suites** (13 new), lint **0 errors / 51 warnings** (none new),
+APK `versionCode 25 / 1.3.3`, minSdk 26, v2-signed, 16 KB-aligned, 19,212,022 B, SHA-256 `fda7bd0c…`.
+Device checks: 8 in `MANUAL-TESTS-v0.6.md` § v1.3.3. One failure during the increment was fixed in the
+**product**: the first `isSendLabel` accepted "Send location".
+
+**Next:** calendar read/add via the Google OAuth path, then the remaining roadmap items (SSH/VPS, MCP client).
+
+## v1.3.4 — calendar: read and add (2026-11-01)
+
+The remaining agent layer starts here. New `calendar/CalendarCore.kt` (ranges, weekday resolution,
+lenient JSON reading, request-body building, Bengali/English wording, honest failure sentences) and
+`calendar/CalendarClient.kt` (REST v3 `events.list` / `events.insert` on the **primary** calendar with
+the existing in-memory `GoogleAuth` token; adds `SCOPE_CALENDAR`). The Connectors screen gained the
+calendar consent button — one consent for all three scopes, because there is one token — and `Skills`
+now lists the calendar as available with its real limit. Two intents: `cal.list` (today / tomorrow /
+named weekday / next 7 days) and `cal.add` (confirmed first, duration from "২ ঘণ্টা"/"৩০ মিনিট", else
+1 h; no time → asks, books nothing). The app never deletes, edits, or invites anyone.
+
+**Verified:** BUILD SUCCESSFUL, 520 tests / 0 fail / 71 suites, lint 0 errors / 51 warnings, APK vc 26 /
+1.3.4 · 19,228,461 B · `6347ccaa…` · v2-signed · 16 KB aligned. Tests also found a real gap:
+"রিমাইন্ডারের তালিকা" used to be `UNKNOWN`; fixed in `ReminderSpeech`.

@@ -113,8 +113,9 @@ object Skills {
             "অ্যাপ পাসওয়ার্ড বা Google সাইন-ইন", "an app password or Google sign-in"),
         Skill("drive", "ড্রাইভে খোঁজা ও পড়া", "Search and read Drive files", SkillGroup.INTEGRATIONS, true,
             "Google সাইন-ইন", "Google sign-in"),
-        Skill("calendar", "ক্যালেন্ডার দেখা/যোগ করা", "Read and add calendar events", SkillGroup.INTEGRATIONS, false,
-            noteBn = "পরিকল্পিত: v1.3.0 (Calendar API)", noteEn = "planned: v1.3.0 (Calendar API)"),
+        Skill("calendar", "ক্যালেন্ডার দেখা/যোগ করা", "Read and add calendar events", SkillGroup.INTEGRATIONS, true,
+            noteBn = "Google ক্যালেন্ডার (primary) — পড়া ও নতুন ইভেন্ট যোগ; মোছা/বদল নেই (v1.3.4)",
+            noteEn = "Google Calendar (primary) — read and add; never delete or edit (v1.3.4)"),
         Skill("vps", "আমার VPS সার্ভারে কমান্ড", "Run commands on my VPS", SkillGroup.INTEGRATIONS, false,
             noteBn = "পরিকল্পিত: v1.4.0 (SSH; কী স্টোর করা হবে Keystore-এ)", noteEn = "planned: v1.4.0 (SSH; key stored in the Keystore)"),
     )

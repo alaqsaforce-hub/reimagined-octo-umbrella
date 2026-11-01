@@ -59,7 +59,17 @@ import com.voicedock.ai.settings.tr
 import com.voicedock.ai.ui.MainActivity
 import com.voicedock.ai.ai.AiReadinessCore
 import com.voicedock.ai.appc.AppLauncher
+import com.voicedock.ai.agents.TaskBoard
+import com.voicedock.ai.agents.TaskBoardStore
+import com.voicedock.ai.agents.TaskRunner
+import com.voicedock.ai.agents.TerminalDecision
+import com.voicedock.ai.agents.TerminalPolicy
 import com.voicedock.ai.command.Choice
+import com.voicedock.ai.device.CallerIdentity
+import com.voicedock.ai.draft.DraftCore
+import com.voicedock.ai.device.ChatInstanceCore
+import com.voicedock.ai.device.DeviceAccess
+import com.voicedock.ai.device.SimCore
 import com.voicedock.ai.command.CommandDecision
 import com.voicedock.ai.command.CommandJson
 import com.voicedock.ai.command.CommandLog
@@ -139,6 +149,9 @@ class AssistantOverlayService : LifecycleService() {
 
     /** v0.6.6 — the small dictation bubble (tap = mic on). */
     private val _dict = MutableStateFlow(DictationBubbleState())
+
+    /** v1.3.0 — set while a task-board step is executing, so `done()` can report back to the runner. */
+    private var runnerTaskId: String? = null
     /** True once ✨ has replaced the recognised text, so new live text does not overwrite it. */
     private var dictFormatted = false
 
@@ -188,6 +201,25 @@ class AssistantOverlayService : LifecycleService() {
             ACTION_HIDE -> removeBubble()
             ACTION_RESCAN -> activate()
             ACTION_CLOSE -> { closeEverything(); return START_NOT_STICKY }
+            // v1.3.0 — a task step (or the task's final line). Runs through the identical pipeline a spoken
+            // command uses, so confirmation, fallbacks and honest failures all still apply.
+            ACTION_RUN_TEXT -> {
+                val text = intent?.getStringExtra(EXTRA_TEXT).orEmpty().trim()
+                if (text.isNotBlank()) {
+                    addBubble()
+                    _dict.value = _dict.value.copy(visible = true, liveText = text)
+                    ensureBubbleVisible()
+                    runCommand(text, intent?.getStringExtra(EXTRA_TASK_ID))
+                }
+            }
+            ACTION_SAY -> {
+                val text = intent?.getStringExtra(EXTRA_TEXT).orEmpty().trim()
+                if (text.isNotBlank()) {
+                    addBubble()
+                    _dict.value = _dict.value.copy(visible = true, answer = text, note = "", busy = false, busyLabel = "")
+                    ensureBubbleVisible()
+                }
+            }
             // v1.0.0: the wake word was heard. Same bubble as a tap; if the command came in the same
             // breath ("শাহরুখ, ওয়াটসঅ্যাপ খোলো") it runs immediately instead of waiting for speech.
             ACTION_WAKE -> {
@@ -401,6 +433,10 @@ class AssistantOverlayService : LifecycleService() {
                 onCommand = { runCommand(state.liveText) },
                 onChoice = { onChoicePicked(it) },
                 onUndo = { runUndo() },
+                // v1.3.1 — the draft card. Three explicit taps; none of them is a side effect of speaking.
+                onDraftInsert = { insertDraftNow() },
+                onDraftKeep = { keepDraft() },
+                onDraftDiscard = { discardDraft() },
             )
         }
         val dm = resources.displayMetrics
@@ -459,6 +495,41 @@ class AssistantOverlayService : LifecycleService() {
             _dict.value = DictationBubbleState()
             updateBubble()
         }
+    }
+
+    /**
+     * v1.3.1 — "ঢোকাও": the only path that puts a draft into another app, and it is always a tap (or a spoken
+     * insert command) — never a side effect of finishing a sentence.
+     */
+    private fun insertDraftNow() {
+        val text = _dict.value.draftText.ifBlank { _dict.value.liveText }.trim()
+        if (text.isBlank()) { toast(DraftCore.nothingText(isBengali())); return }
+        val micOn = VoiceDock.dictation(this).ui.value.micOn
+        removeDictBubble()
+        lifecycleScope.launch {
+            if (micOn) runCatching { VoiceDock.dictation(this@AssistantOverlayService).finish() }
+            delay(280) // our window must be gone so the app underneath owns the input focus
+            val out = TextInserter.insert(this@AssistantOverlayService, text)
+            toast(tr(out.result.bn, out.result.en))
+            runCatching { VoiceDock.dictation(this@AssistantOverlayService).markInserted(out.destination) }
+            _dict.value = DictationBubbleState()
+            updateBubble()
+        }
+    }
+
+    /** "রাখো" — the text is already in Draft history; the card just closes with an honest line. */
+    private fun keepDraft() {
+        val text = _dict.value.draftText
+        _dict.value = _dict.value.copy(draftText = "", draftTarget = "", draftNote = "", note = DraftCore.keptText(isBengali()))
+        updateBubble()
+        if (text.isNotBlank()) runCatching { VoiceDock.dictation(this).markInserted("draft-history") }
+    }
+
+    /** ✕ — throw the composed draft away. The draft row itself stays in history (never silently deleted). */
+    private fun discardDraft() {
+        _dict.value = _dict.value.copy(draftText = "", draftTarget = "", draftNote = "", note = "")
+        runCatching { VoiceDock.dictation(this).clear() }
+        updateBubble()
     }
 
     /** ✨ — tidy the recognised text (Mode B). The original is kept on device as the draft. */
@@ -556,7 +627,8 @@ class AssistantOverlayService : LifecycleService() {
      * inserting it. Offline patterns first (works with no key, no internet, instantly), the model only
      * when they find nothing.
      */
-    private fun runCommand(text: String) {
+    private fun runCommand(text: String, taskId: String? = null) {
+        runnerTaskId = taskId
         val said = text.trim()
         if (said.isBlank()) { toast(tr("কিছু বলা হয়নি", "Nothing was said")); return }
         if (!SettingsStore.state.value.commandsEnabled) {
@@ -816,6 +888,8 @@ class AssistantOverlayService : LifecycleService() {
             undoLog.clear(); undoRun = null
             ensureBubbleVisible()
             commandLog.record(spec.raw, spec.intent, spec.confidence, source, strategy, ok, text)
+            // v1.3.0 — if a task step produced this, the runner needs the truth to move on.
+            runnerTaskId?.let { com.voicedock.ai.agents.TaskRunner.onStepResult(it, ok, text) }
         }
 
         when (spec.intent) {
@@ -882,12 +956,394 @@ class AssistantOverlayService : LifecycleService() {
                 )
             }
 
+            // ---- v1.3.0 device access -------------------------------------------------------------
+            CmdIntent.SIM_NUMBERS -> {
+                val sims = DeviceAccess.sims(this)
+                val text = SimCore.myNumbers(sims, bn)
+                val extra = if (sims.isEmpty() && !DeviceAccess.hasPhoneState(this)) {
+                    tr("\n\n(‘ফোন স্টেট’ অনুমতি নেই — সেটিংস → সিস্টেম ও এজেন্ট থেকে দিন।)",
+                        "\n\n(No ‘phone state’ permission — grant it in Settings → System & agent.)")
+                } else ""
+                done(text + extra, sims.any { !it.number.isNullOrBlank() }, "sim:numbers")
+            }
+
+            CmdIntent.CALLER_WHO -> {
+                // Nothing here guesses: only a live ringing notification counts as "someone is calling".
+                val ringing = runCatching {
+                    com.voicedock.ai.notify.RemoteReply.liveAll()
+                        .filter { com.voicedock.ai.notify.CallNotificationAction.looksLikeCall(it.notification) }
+                        .maxByOrNull { it.postTime }
+                }.getOrNull()
+                if (ringing == null) {
+                    done(
+                        tr("এখন কোনো কল আসছে না। কে ফোন করছে জানতে চাইলে কল আসার সময় জিজ্ঞেস করুন।",
+                            "No call is ringing right now. Ask again while a call is coming in."),
+                        false, "identity:none",
+                    )
+                } else {
+                    val n = ringing.notification
+                    val title = n.extras?.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString().orEmpty()
+                    val body = (n.extras?.getCharSequence(android.app.Notification.EXTRA_TEXT)?.toString().orEmpty())
+                    val number = (title + " " + body).filter { it.isDigit() || it == '+' }.trim()
+                    val contacts = runCatching { com.voicedock.ai.telecom.ContactResolver(this).all() }.getOrDefault(emptyList())
+                    val simToUse = SimCore.pick(DeviceAccess.sims(this), null)
+                    val id = com.voicedock.ai.device.CallerIdentity.of(number.ifBlank { title }, contacts, simToUse)
+                    done(com.voicedock.ai.device.CallerIdentity.incomingText(id, bn) + tr("\n\nধরতে ‘ধরো’, কাটতে ‘কেটে দাও’ বলুন।", "\n\nSay ‘answer’ to pick up, ‘decline’ to reject."),
+                        true, "identity:ringing")
+                }
+            }
+
+            CmdIntent.CHAT_OPEN -> {
+                val hint = spec.slot(Slot.CHAT).orEmpty()
+                val all = DeviceAccess.chatInstances(this)
+                val picked = ChatInstanceCore.pick(all, hint)
+                val whats = ChatInstanceCore.whatsapps(all)
+                when {
+                    all.isEmpty() -> done(
+                        tr("কোনো চ্যাট অ্যাপ (হোয়াটসঅ্যাপ/মেসেঞ্জার) পাওয়া যায়নি।",
+                            "No chat app (WhatsApp/Messenger) was found."), false, "chat:none",
+                    )
+                    picked == null -> done(
+                        tr("একাধিক ইনস্ট্যান্স আছে — কোনটা খুলবো?\n", "There is more than one instance — which one?\n") +
+                            ChatInstanceCore.choices(all).joinToString("\n") + tr("\n‘বিজনেস’ বা ‘ক্লোন’ বলে বলুন।", "\nSay ‘business’ or ‘clone’."),
+                        false, "chat:ambiguous",
+                    )
+                    DeviceAccess.launchInstance(this, picked) -> done(
+                        tr("${picked.label} খোলা হলো ✓", "Opened ${picked.label} ✓"), true, "chat:open",
+                    )
+                    else -> done(tr("${picked.label} খোলা যায়নি — লঞ্চার থেকে নিজে খুলুন।", "Could not open ${picked.label} — open it from the launcher."), false, "chat:failed")
+                }
+            }
+
+            CmdIntent.TERMUX_RUN -> {
+                val cmd = spec.slot(Slot.TEXT).orEmpty()
+                val on = SettingsStore.state.value.termuxEnabled
+                // The confirmation card (destructive intent) has already been shown, so pass confirmed = true
+                // and keep the hard blocks in place.
+                val verdict = TerminalPolicy.decide(cmd, on, confirmed = true)
+                if (verdict.decision == TerminalDecision.BLOCK) {
+                    done(if (bn) verdict.reasonBn else verdict.reasonEn, false, "termux:blocked")
+                    _dict.value = _dict.value.copy(needsSetup = true)
+                } else {
+                    val present = DeviceAccess.termuxInstalled(this)
+                    val reason = DeviceAccess.runTermux(this, cmd)
+                    val text = TerminalPolicy.dispatchedText(cmd, present, bn) +
+                        if (reason != null) tr("\n(পাঠানো যায়নি: $reason)", "\n(Not dispatched: $reason)") else ""
+                    done(text, reason == null && present, "termux:run")
+                }
+            }
+
+            CmdIntent.TASK_ADD -> {
+                val body = spec.slot(Slot.TEXT).orEmpty()
+                val steps = TaskBoard.parseSteps(body)
+                if (steps.isEmpty()) {
+                    done(tr("কী কাজ করবো ঠিক বুঝিনি — ‘কাজ দাও: …’ বলে বলুন।", "I did not catch the task — say ‘add task: …’."), false, "task:empty")
+                } else {
+                    val task = TaskBoardStore(this).add(steps.first().take(40), steps, System.currentTimeMillis())
+                    if (task == null) {
+                        done(tr("কাজটি সংরক্ষণ করা যায়নি।", "The task could not be saved."), false, "task:save")
+                    } else {
+                        val list = steps.mapIndexed { i, st -> "${SimCore.bn(i + 1)}. $st" }.joinToString("\n")
+                        done(TaskBoard.startedText(task, bn) + "\n" + list, true, "task:add")
+                        TaskRunner.start(this, task.id)
+                    }
+                }
+            }
+
+            CmdIntent.TASK_LIST -> {
+                val tasks = TaskBoardStore(this).load()
+                val text = if (tasks.isEmpty()) {
+                    tr("কাজের তালিকা খালি — ‘কাজ দাও: …’ বলে একটা যোগ করুন।", "The task list is empty — say ‘add task: …’ to add one.")
+                } else {
+                    tasks.takeLast(6).reversed().joinToString("\n") { "• " + it.label(bn) }
+                }
+                done(text, tasks.isNotEmpty(), "task:list")
+            }
+
+            CmdIntent.TASK_CANCEL -> {
+                val cancelled = TaskRunner.cancel(this, null)
+                done(
+                    if (cancelled == null) tr("বাতিল করার মতো চলমান কাজ নেই।", "No running task to cancel.")
+                    else tr("বাতিল হয়েছে: ${cancelled.title}", "Cancelled: ${cancelled.title}"),
+                    cancelled != null, "task:cancel",
+                )
+            }
+
+            // ---- v1.3.2 content summaries -----------------------------------------------------------
+            CmdIntent.MSG_THREAD -> {
+                val who = spec.slot(Slot.CONTACT).orEmpty()
+                if (!NotificationAccess.isGranted(this)) {
+                    val msg = tr("নোটিফিকেশন অ্যাক্সেস নেই — সেটিংস → কমান্ডে চালু করুন।",
+                        "Notification access is off — enable it in Settings → Commands.")
+                    done(msg, false, "blocked")
+                    _dict.value = _dict.value.copy(needsSetup = true, note = msg)
+                } else {
+                    val entries = runCatching { notifStore.all() }.getOrDefault(emptyList())
+                    val thread = com.voicedock.ai.notify.ChatRollup.find(entries, dayStart(), who)
+                    if (thread == null) {
+                        done(com.voicedock.ai.notify.ChatRollup.notFound(who, bn), false, "thread:none")
+                    } else {
+                        val base = com.voicedock.ai.notify.ChatRollup.text(thread, bn)
+                        // The log-based answer is shown immediately; a model may then *add* a summary, but
+                        // only from the messages the notifications actually contained.
+                        done(base, true, "thread:log")
+                        if (thread.messages.size >= 3 && AiSetup.readiness(this).ok) {
+                            lifecycleScope.launch {
+                                _dict.value = _dict.value.copy(busy = true, busyLabel = tr("সারমর্ম লিখছি…", "Summarising…"))
+                                val ai = runCatching {
+                                    withContext(Dispatchers.IO) {
+                                        AiSetup.router(this@AssistantOverlayService).complete(
+                                            com.voicedock.ai.notify.ChatRollup.aiPrompt(thread, bn),
+                                            listOf(com.voicedock.ai.ai.ChatMessage.user(
+                                                com.voicedock.ai.notify.ChatRollup.aiMessages(thread))),
+                                        ).text.trim()
+                                    }
+                                }.getOrNull()?.takeIf { it.isNotBlank() }
+                                _dict.value = _dict.value.copy(
+                                    busy = false, busyLabel = "",
+                                    answer = if (ai == null) _dict.value.answer
+                                    else ai + "\n\n" + tr(
+                                        "(উৎস: ${thread.count}টা নোটিফিকেশন — অ্যাপ নিজে যা দেখিয়েছে)",
+                                        "(source: ${thread.count} notifications — exactly what the app showed)",
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            CmdIntent.YT_SUMMARY -> {
+                val raw = spec.slot(Slot.QUERY).orEmpty().ifBlank { spec.raw }
+                val id = com.voicedock.ai.summaries.YtSummaryCore.videoId(raw)
+                if (id == null) {
+                    done(com.voicedock.ai.summaries.YtSummaryCore.failure("no_link", bn), false, "yt:nolink")
+                } else {
+                    _dict.value = _dict.value.copy(busy = true, busyLabel = tr("ভিডিওর তথ্য আনছি…", "Fetching the video…"))
+                    lifecycleScope.launch {
+                        val out = withContext(Dispatchers.IO) { com.voicedock.ai.summaries.YtSummary.fetch(id) }
+                        val info = out.info
+                        if (info == null) {
+                            done(com.voicedock.ai.summaries.YtSummaryCore.failure(out.reason ?: "parse", bn), false, "yt:${out.reason}")
+                        } else {
+                            val ai = if (AiSetup.readiness(this@AssistantOverlayService).ok) {
+                                runCatching {
+                                    withContext(Dispatchers.IO) {
+                                        AiSetup.router(this@AssistantOverlayService).complete(
+                                            com.voicedock.ai.summaries.YtSummaryCore.aiPrompt(bn),
+                                            listOf(com.voicedock.ai.ai.ChatMessage.user(
+                                                "TITLE: ${info.title}\nCHANNEL: ${info.channel}\n" +
+                                                    "DESCRIPTION: ${info.description.take(1200)}")),
+                                        ).text
+                                    }
+                                }.getOrNull()?.trim()?.takeIf { it.isNotBlank() }
+                            } else null
+                            done(com.voicedock.ai.summaries.YtSummaryCore.text(info, bn, ai), true, "yt:${if (ai == null) "meta" else "ai"}")
+                        }
+                    }
+                }
+            }
+
+            CmdIntent.YT_TRANSCRIPT -> {
+                val svc = InsertAccessibilityService.instance
+                if (svc == null) {
+                    done(tr("Accessibility চালু নেই — স্ক্রিনের ট্রান্সক্রিপ্ট পড়া যায় না (সেটিংস → সিস্টেম ও এজেন্ট)।",
+                        "Accessibility is off — the on-screen transcript cannot be read (Settings → System & agent)."),
+                        false, "transcript:noservice")
+                    _dict.value = _dict.value.copy(needsSetup = true)
+                } else {
+                    val parsed = com.voicedock.ai.summaries.ScreenTranscript.clean(
+                        runCatching { svc.screenText(12_000, expectedPackage = "com.google.android.youtube") }.getOrDefault(""),
+                    )
+                    when {
+                        !parsed.confident || parsed.lines.isEmpty() -> done(
+                            com.voicedock.ai.summaries.ScreenTranscript.missingPanel(bn), false, "transcript:missing",
+                        )
+                        else -> {
+                            done(com.voicedock.ai.summaries.ScreenTranscript.text(parsed, bn, null), true,
+                                "transcript:${parsed.lines.size}")
+                            if (AiSetup.readiness(this).ok) {
+                                lifecycleScope.launch {
+                                    _dict.value = _dict.value.copy(busy = true, busyLabel = tr("সারমর্ম লিখছি…", "Summarising…"))
+                                    val summary = runCatching {
+                                        withContext(Dispatchers.IO) {
+                                            AiSetup.router(this@AssistantOverlayService).complete(
+                                                com.voicedock.ai.summaries.ScreenTranscript.aiPrompt(bn),
+                                                listOf(com.voicedock.ai.ai.ChatMessage.user(
+                                                    parsed.lines.joinToString("\n"))),
+                                            ).text.trim()
+                                        }
+                                    }.getOrNull()?.takeIf { it.isNotBlank() }
+                                    _dict.value = _dict.value.copy(
+                                        busy = false, busyLabel = "",
+                                        answer = com.voicedock.ai.summaries.ScreenTranscript.text(parsed, bn, summary),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- v1.3.4 calendar --------------------------------------------------------------------
+            CmdIntent.CAL_LIST -> {
+                if (!com.voicedock.ai.calendar.CalendarClient.connected()) {
+                    val msg = com.voicedock.ai.calendar.CalendarCore.scopeMissing(bn)
+                    done(msg, false, "cal:notoken")
+                    _dict.value = _dict.value.copy(needsSetup = true, note = tr(
+                        "কানেক্টর স্ক্রিন খুলতে ‘সেটিংস’ চাপুন।", "Tap ‘Settings’ to open the Connectors screen.",
+                    ))
+                } else {
+                    val now = System.currentTimeMillis()
+                    val raw = spec.slot(Slot.TIME).orEmpty().ifBlank { spec.raw }
+                    val range = com.voicedock.ai.calendar.CalendarCore.range(raw)
+                    val (from, to) = com.voicedock.ai.calendar.CalendarCore.window(range, now, word = raw)
+                    _dict.value = _dict.value.copy(busy = true, busyLabel = tr("ক্যালেন্ডার দেখছি…", "Reading the calendar…"))
+                    lifecycleScope.launch {
+                        val out = withContext(Dispatchers.IO) { com.voicedock.ai.calendar.CalendarClient.list(from, to) }
+                        if (!out.ok) {
+                            done(com.voicedock.ai.calendar.CalendarCore.failure(out.reason ?: "io", bn), false, "cal:${out.reason}")
+                        } else {
+                            done(
+                                com.voicedock.ai.calendar.CalendarCore.list(
+                                    out.events,
+                                    com.voicedock.ai.calendar.CalendarCore.rangeLabel(range, now, bn, word = raw),
+                                    bn,
+                                ),
+                                true, "cal:list:${out.events.size}",
+                            )
+                            if (SettingsStore.state.value.speakResults && out.events.isNotEmpty()) {
+                                speaker.speak(
+                                    com.voicedock.ai.calendar.CalendarCore.list(
+                                        out.events.take(3),
+                                        com.voicedock.ai.calendar.CalendarCore.rangeLabel(range, now, bn, word = raw),
+                                        bn,
+                                    ), bn,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            CmdIntent.CAL_ADD -> {
+                val title = spec.slot(Slot.TEXT).orEmpty().trim()
+                val raw = spec.slot(Slot.TIME).orEmpty().ifBlank { spec.raw }
+                val guess = com.voicedock.ai.schedule.TimeWords.parse(raw, System.currentTimeMillis())
+                if (title.isBlank()) {
+                    done(com.voicedock.ai.calendar.CalendarCore.noTitle(bn), false, "cal:notitle")
+                } else if (guess == null) {
+                    done(com.voicedock.ai.calendar.CalendarCore.noTime(bn), false, "cal:notime")
+                } else if (!com.voicedock.ai.calendar.CalendarClient.connected()) {
+                    done(com.voicedock.ai.calendar.CalendarCore.scopeMissing(bn), false, "cal:notoken")
+                    _dict.value = _dict.value.copy(needsSetup = true)
+                } else {
+                    // Duration: "২ ঘণ্টা" / "2 hours" when spoken, otherwise one hour.
+                    val ascii = com.voicedock.ai.device.SimCore.asciiDigits(raw)
+                    val hours = Regex("(\\d)\\s*(ঘণ্টা|hour)").find(ascii)?.groupValues?.get(1)?.toIntOrNull()
+                    val mins = Regex("(\\d{1,3})\\s*(মিনিট|min)").find(ascii)?.groupValues?.get(1)?.toIntOrNull()
+                    val length = when {
+                        hours != null -> hours * 60L * 60_000L
+                        mins != null -> mins * 60_000L
+                        else -> 60L * 60_000L
+                    }
+                    val start = guess.atMillis
+                    val end = start + length
+                    _dict.value = _dict.value.copy(busy = true, busyLabel = tr("ক্যালেন্ডারে যোগ করছি…", "Adding to the calendar…"))
+                    lifecycleScope.launch {
+                        val out = withContext(Dispatchers.IO) {
+                            com.voicedock.ai.calendar.CalendarClient.create(title, start, end)
+                        }
+                        done(
+                            if (out.ok) com.voicedock.ai.calendar.CalendarCore.added(title, bn)
+                            else com.voicedock.ai.calendar.CalendarCore.failure(out.reason ?: "io", bn),
+                            out.ok, "cal:add:${if (out.ok) "ok" else out.reason}",
+                        )
+                        // Undo is honest here: the event really can be removed… except the app never deletes, by
+                        // design. So the answer names the time instead of offering a false undo chip.
+                        if (out.ok) {
+                            _dict.value = _dict.value.copy(
+                                note = com.voicedock.ai.calendar.CalendarCore.draftText(title, start, end, bn),
+                            )
+                        }
+                    }
+                }
+            }
+
+            CmdIntent.DRAFT_INSERT -> {
+                if (_dict.value.draftText.isBlank() && _dict.value.liveText.isBlank()) {
+                    done(DraftCore.nothingText(bn), false, "draft:none")
+                } else {
+                    done(tr("খসড়া বসানো হচ্ছে…", "Inserting the draft…"), true, "draft:insert")
+                    insertDraftNow()
+                }
+            }
+
+            CmdIntent.DRAFT_DISCARD -> {
+                val had = _dict.value.draftText.isNotBlank()
+                discardDraft()
+                done(
+                    if (had) tr("খসড়া বাতিল করা হলো", "Draft discarded") else DraftCore.nothingText(bn),
+                    had, "draft:discard",
+                )
+            }
+
+            CmdIntent.VOICE_OPEN -> {
+                val i = Intent(this, com.voicedock.ai.ui.MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(com.voicedock.ai.ui.MainActivity.EXTRA_SCREEN, "voice")
+                val ok = runCatching { startActivity(i) }.isSuccess
+                done(
+                    if (ok) tr("ভয়েস মোড খোলা হলো — বলুন, লেখা নিচে আসবে।", "Voice mode is open — speak and the words appear below.")
+                    else tr("ভয়েস স্ক্রিন খোলা যায়নি।", "The voice screen could not be opened."),
+                    ok, "voice:open",
+                )
+            }
+
             CmdIntent.CALL_PLACE -> {
+                val who = spec.slot(Slot.CONTACT).orEmpty()
+                // v1.3.0 — resolve who this is before dialling, and honour "সিম ২ দিয়ে".
+                val contacts = runCatching { com.voicedock.ai.telecom.ContactResolver(this).all() }.getOrDefault(emptyList())
+                val hit = runCatching {
+                    if (who.filter { it.isDigit() }.length >= 6) null
+                    else com.voicedock.ai.telecom.ContactResolver(this).resolve(who).firstOrNull()
+                }.getOrNull()
+                val target = hit?.number ?: who
+                val wantedSlot = spec.slot(Slot.SIM)?.toIntOrNull()
+                val sims = DeviceAccess.sims(this)
+                val sim = if (wantedSlot == null) null else SimCore.pick(sims, wantedSlot)
+                if (wantedSlot != null && sim == null) {
+                    done(SimCore.explainMissing(sims, wantedSlot, bn), false, "sim:missing")
+                    _dict.value = _dict.value.copy(needsSetup = true)
+                } else if (sim != null) {
+                    val id = com.voicedock.ai.device.CallerIdentity.of(target, contacts, sim)
+                    val reason = DeviceAccess.placeCallOnSim(this, target, sim)
+                    if (reason == null) {
+                        done(tr("${com.voicedock.ai.device.CallerIdentity.describe(id, bn)} — ${sim.title} দিয়ে কল করা হচ্ছে ✓",
+                            "Calling ${com.voicedock.ai.device.CallerIdentity.describe(id, bn)} on ${sim.title} ✓"), true, "place:sim${sim.displaySlot}")
+                        // v1.3.1 — floating mode: a placed call does not close the bubble, and the user is told
+                        // that the assistant is still there over the call screen.
+                        _dict.value = _dict.value.copy(note = tr(
+                            "বাবল খোলা থাকছে — কল চলাকালীনও ‘কেটে দাও’ বা অন্য কমান্ড দিতে পারবেন।",
+                            "The bubble stays open — you can still say ‘decline’ or any command during the call.",
+                        ))
+                    } else {
+                        // The SIM could not be aimed at: place the call normally and say so honestly.
+                        val out = calls.place(target)
+                        done(
+                            tr("${com.voicedock.ai.device.CallerIdentity.describe(id, bn)} — ঠিক কোন সিম দিয়ে যাবে নিশ্চিত করা যায়নি (${reason}); সিস্টেমের ডিফল্ট সিমে কল হচ্ছে।",
+                                "${com.voicedock.ai.device.CallerIdentity.describe(id, bn)} — could not pin the SIM (${reason}); calling on the system default SIM."),
+                            out.ok, "place:simFallback",
+                        )
+                    }
+                } else {
+                // No SIM was named: exactly the v0.9.0 behaviour (system default SIM), unchanged.
                 val number = spec.slot(Slot.CONTACT).orEmpty()
                 val out = calls.place(number)
                 done(
                     when {
-                        out.ok && out.strategy == CallStrategy.TELECOM -> tr("$number নম্বরে কল করা হচ্ছে ✓", "Calling $number ✓")
+                        out.ok && out.strategy == CallStrategy.TELECOM -> tr("$number নম্বরে কল করা হচ্ছে ✓ (বাবল খোলা থাকছে)",
+                            "Calling $number ✓ (the bubble stays open)")
                         out.ok && out.strategy == CallStrategy.DIALER_OPENED ->
                             tr("কল করার অনুমতি নেই — ডায়ালারে $number বসানো হয়েছে, আপনি চাপ দিন।", "No call permission — the dialer is open with $number filled in.")
                         else -> tr("কল করা যায়নি (অনুমতি বা সিস্টেম বাধা)।", "Could not place the call (permission or system block).")
@@ -895,6 +1351,7 @@ class AssistantOverlayService : LifecycleService() {
                     out.ok, "place:${out.strategy.name.lowercase()}",
                 )
                 if (!out.ok) _dict.value = _dict.value.copy(needsSetup = true)
+                }
             }
 
             CmdIntent.CALL_ANSWER -> {
@@ -958,6 +1415,23 @@ class AssistantOverlayService : LifecycleService() {
                 val reason = RemoteReply.send(this, live, body)
                 if (reason == null) {
                     done(tr("‘$sender’ কে পাঠানো হয়েছে ✓", "Sent to ‘$sender’ ✓"), true, "directReply")
+                } else if (reason == "no_notification" || reason == "no_action") {
+                    // v1.3.3 — accessibility pass: with the chat already open, type it and press the app's own
+                    // Send. Conservative: the app in front must prove it is a chat with a send button.
+                    val pkg = live?.packageName
+                    val attempt = com.voicedock.ai.send.AccessibilitySender.send(this, body, pkg, sender)
+                    if (attempt == com.voicedock.ai.send.SendResult.SENT) {
+                        done(com.voicedock.ai.send.SendCore.resultText(attempt, bn, sender), true, "accessibilitySend")
+                    } else {
+                        val msg = tr(
+                            "সরাসরি উত্তর দেওয়ার সুযোগ নেই, আর Accessibility দিয়েও পাঠানো যায়নি — ${attempt.bn}.\n" +
+                                "লেখাটা কপি করা হলো, চ্যাটে গিয়ে পেস্ট করে পাঠান।",
+                            "No direct reply, and the accessibility route did not work — ${attempt.en}.\n" +
+                                "The text was copied; paste it in the chat and send.",
+                        )
+                        com.voicedock.ai.insertion.ClipboardInsertion.insert(this, body)
+                        done(msg, false, "accessibilitySend:${attempt.name.lowercase()}")
+                    }
                 } else {
                     // The trailing comma belongs to done(...), so the message is built first.
                     val msg = when (reason) {
@@ -1575,6 +2049,18 @@ class AssistantOverlayService : LifecycleService() {
                         else -> d.live
                     }
                     _dict.value = _dict.value.copy(phase = d.phase, liveText = live, level = d.level)
+                    // v1.3.1 — a finished dictation becomes a visible draft card (never an insertion).
+                    if (d.phase == DictationPhase.REVIEW) {
+                        val composed = DraftCore.tidy(d.draft.ifBlank { d.live })
+                        if (DraftCore.presentable(composed) && composed != _dict.value.draftText) {
+                            val plan = DraftCore.plan(composed, InsertAccessibilityService.instance != null)
+                            _dict.value = _dict.value.copy(
+                                draftText = plan.text,
+                                draftTarget = plan.targetLabel,
+                                draftNote = if (isBengali()) plan.noteBn else plan.noteEn,
+                            )
+                        }
+                    }
                     updateBubble()
                 }
                 if (assistantDictationStarted) {
@@ -1681,6 +2167,30 @@ class AssistantOverlayService : LifecycleService() {
         /** v1.0.0 — the hotword fired. */
         const val ACTION_WAKE = "com.voicedock.ai.ASSISTANT_WAKE"
         const val EXTRA_WAKE_COMMAND = "wake_command"
+
+        /** v1.3.0 — the task runner hands one step of a task to the normal command pipeline. */
+        const val ACTION_RUN_TEXT = "com.voicedock.ai.ASSISTANT_RUN_TEXT"
+        const val EXTRA_TEXT = "text"
+        const val EXTRA_TASK_ID = "task_id"
+        /** v1.3.0 — show a line in the bubble without running anything (task finished / cancelled). */
+        const val ACTION_SAY = "com.voicedock.ai.ASSISTANT_SAY"
+
+        /** Run a sentence as if it had been spoken (used by the task runner). */
+        fun runCommand(ctx: Context, text: String, taskId: String? = null) {
+            val i = Intent(ctx, AssistantOverlayService::class.java)
+                .setAction(ACTION_RUN_TEXT)
+                .putExtra(EXTRA_TEXT, text)
+            if (taskId != null) i.putExtra(EXTRA_TASK_ID, taskId)
+            try { androidx.core.content.ContextCompat.startForegroundService(ctx, i) }
+            catch (e: Exception) { Log.w("VoiceDock", "run text dispatch failed: ${e.javaClass.simpleName}") }
+        }
+
+        /** Show a short status line in the bubble (no speech, nothing executed). */
+        fun say(ctx: Context, text: String) {
+            val i = Intent(ctx, AssistantOverlayService::class.java).setAction(ACTION_SAY).putExtra(EXTRA_TEXT, text)
+            try { androidx.core.content.ContextCompat.startForegroundService(ctx, i) }
+            catch (e: Exception) { Log.w("VoiceDock", "say dispatch failed: ${e.javaClass.simpleName}") }
+        }
 
         private const val COLOR_IDLE = 0xFF455A64.toInt()
         private const val COLOR_SCANNING = 0xFF3DDCBF.toInt()

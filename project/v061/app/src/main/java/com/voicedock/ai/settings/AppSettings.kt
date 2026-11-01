@@ -111,6 +111,15 @@ data class AppSettings(
     /** Opt-in local crash reports: enabled by default only in debug builds. */
     val crashLoggingEnabled: Boolean = com.voicedock.ai.BuildConfig.DEBUG,
 
+    // ---- v1.3.0 device access ----
+    /**
+     * Running shell commands in Termux (and proot-Ubuntu / OpenCode inside it). Off by default: a shell that
+     * a microphone can reach is the most dangerous thing this app could offer. See agents/TerminalPolicy.
+     */
+    val termuxEnabled: Boolean = false,
+    /** Show a card in the bubble when a background task starts/finishes (the bubble otherwise stays quiet). */
+    val taskUpdatesInBubble: Boolean = true,
+
     // ---- v1.1.0 modes: agent / voice-to-voice / voice+text / text-only ----
     /** AGENT by default, as asked: the assistant stays ready, speaks, and may run a plan. */
     val mode: AssistantMode = AssistantMode.AGENT,

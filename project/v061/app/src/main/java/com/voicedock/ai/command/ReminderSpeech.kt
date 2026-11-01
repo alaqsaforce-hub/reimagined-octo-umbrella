@@ -17,7 +17,8 @@ object ReminderSpeech {
         "remind me to", "remind me", "set a reminder", "set reminder", "reminder to", "reminder",
     )
     private val listMarkers = listOf(
-        "রিমাইন্ডার দেখাও", "রিমাইন্ডার তালিকা", "রিমাইন্ডারগুলো", "রিমাইন্ডার গুলো", "কী কী রিমাইন্ডার",
+        "রিমাইন্ডার দেখাও", "রিমাইন্ডার তালিকা", "রিমাইন্ডারের তালিকা", "রিমাইন্ডারগুলো", "রিমাইন্ডারেরা",
+        "রিমাইন্ডার গুলো", "রিমাইন্ডারের", "কী কী রিমাইন্ডার",
         "কি কি রিমাইন্ডার", "my reminders", "list reminders", "show reminders", "list my reminders",
     )
 

@@ -62,7 +62,50 @@ See `V1.2.1-CHANGES.md`. Internet search landed with Brave/Tavily/SearxNG; the Y
 too (picking the first video did not — that is the v1.3 accessibility pass). Scheduled messages ship with three
 honest delivery routes and no `SEND_SMS`.
 
-## v1.3.0 — "কথা ও কনটেন্ট বোঝা" (social + content summaries)
+## v1.3.0 — "সিম, ক্লোন আর কাজ" (device access + task board) — **SHIPPED 2026-11-01**
+
+The user re-ordered this release: device access first, then the background task board. Both landed:
+
+* **Dual SIM** — pick the SIM by voice (`সিম ২ দিয়ে …`), own number per SIM (masked), the system default named,
+  and an honest sentence when Android cannot pin the internal call account to a slot.
+* **Own numbers** — `READ_PHONE_NUMBERS`, printed masked; the exact permission named when it is missing.
+* **Multiple WhatsApp / clones** — `package@userId` via `LauncherApps` per profile (the only route to a Dual
+  Messenger / work-profile clone); ambiguity asks; a clone gets no direct-reply promise.
+* **Caller identity** — who is ringing, and whether the name is saved in contacts.
+* **Termux / proot / OpenCode** — through Termux's `RUN_COMMAND` only, off by default, read-only allowlist,
+  destructive commands confirmed every time, catastrophic ones refused even when confirmed.
+* **Task board** — user-addable tasks whose steps reuse the real command pipeline; background execution,
+  retry-once-then-fail, PAUSED when a confirmation never arrives, persisted across restarts.
+
+See `V1.3.0-CHANGES.md`. **Carried to v1.3.1:** the ChatGPT-like voice-to-voice surface and the floating
+**draft** card (draft shown in the bubble, inserted on command) — the third item of the same request.
+
+## v1.3.1 — voice surface + draft card — **SHIPPED 2026-11-01** · _content summaries carried forward_
+
+Shipped: the ChatGPT-like voice screen (turns built from the real command log), the draft card
+(`draft/DraftCore`, `requiresExplicitInsert = true`, exact spoken control `ঢোকাও` / `খসড়া বাতিল`), and calls
+that keep the bubble open with an explicit note. See `V1.3.1-CHANGES.md`.
+
+## v1.3.2 — chat roll-up + YouTube link summary — **SHIPPED 2026-11-01** · _calendar carried forward_
+
+Shipped: `ChatRollup` (`msg.thread`) and `YtSummary` (`yt.summary`), both honest about what the phone does not
+have. See `V1.3.2-CHANGES.md`.
+
+## v1.3.3 — accessibility pass — **SHIPPED 2026-11-01** · _calendar stays next_
+
+Shipped: `send/SendCore` + `send/AccessibilitySender` (send through the open chat, verified before claiming) and
+`summaries/ScreenTranscript` (`yt.transcript`, reads the transcript panel the user opened). See
+`V1.3.3-CHANGES.md`.
+
+## v1.3.4 — calendar and the remaining agent layer  ✅ SHIPPED (read + add; 520 tests)
+
+* **Voice-to-voice surface** (the user's item 3): one screen that looks like a chat — orb, live transcript,
+  spoken replies — reusing the v1.1.0 dictation engine and the four modes.
+* **Floating draft card**: while a chat app is in front, the assistant composes what was said into a draft,
+  shows it, and inserts it only on "ঢোকাও" (or the user taps insert). Nothing auto-inserts, ever.
+* **Call flows stay floating**: after "ফোনে কল দাও" or a WhatsApp call, the bubble must remain over the call
+  and the chat app instead of collapsing.
+* Then the content summaries originally planned for this number:
 
 * **WhatsApp summaries**: the notification log (v0.8) already gives sender + text for every message; add a
   per-chat roll-up ("রহিম: ৫টা মেসেজ, শেষে বলেছে …") and an accessibility read of the open chat when the

@@ -42,6 +42,27 @@ object CommandRegistry {
             "সময়মতো মেসেজ পাঠানো", "Send a message later"),
         Intent.WEB_SEARCH to IntentMeta(setOf(Slot.QUERY), false, true, "ইন্টারনেটে খোঁজা", "Search the internet"),
         Intent.YT_SEARCH to IntentMeta(setOf(Slot.QUERY), false, true, "ইউটিউবে খোঁজা", "Search YouTube"),
+        // v1.3.0 — device access. Reading SIM/identity information is harmless; running a shell command and
+        // handing the agent a background task can both change the phone, so they confirm.
+        Intent.SIM_NUMBERS to IntentMeta(emptySet(), false, true, "নিজের নম্বর বলা", "Say my own numbers"),
+        Intent.CALLER_WHO to IntentMeta(emptySet(), false, true, "কে ফোন করছে জানা", "Who is calling"),
+        Intent.CHAT_OPEN to IntentMeta(emptySet(), false, true, "চ্যাট অ্যাপ/ক্লোন খোলা", "Open a chat app instance"),
+        Intent.TERMUX_RUN to IntentMeta(setOf(Slot.TEXT), true, true, "টার্মাক্সে কমান্ড চালানো", "Run a Termux command"),
+        Intent.TASK_ADD to IntentMeta(setOf(Slot.TEXT), true, true, "ব্যাকগ্রাউন্ডে কাজ দেওয়া", "Give a background task"),
+        Intent.TASK_LIST to IntentMeta(emptySet(), false, true, "কাজের তালিকা", "List background tasks"),
+        Intent.TASK_CANCEL to IntentMeta(emptySet(), true, true, "চলমান কাজ বাতিল", "Cancel the running task"),
+        // v1.3.1 — putting a draft into another app is the user's own text, so it is not destructive; it is
+        // also never automatic (see DraftCore.requiresExplicitInsert).
+        Intent.DRAFT_INSERT to IntentMeta(emptySet(), false, true, "খসড়াটা কার্সরে বসানো", "Insert the draft"),
+        Intent.DRAFT_DISCARD to IntentMeta(emptySet(), false, true, "খসড়া বাতিল করা", "Discard the draft"),
+        Intent.VOICE_OPEN to IntentMeta(emptySet(), false, true, "ভয়েস মোড খোলা", "Open voice mode"),
+        // v1.3.2 — reading a chat's notifications back is harmless; a YouTube link only reads a public page.
+        Intent.MSG_THREAD to IntentMeta(setOf(Slot.CONTACT), false, true, "এক চ্যাটের সারমর্ম", "Summarise one chat"),
+        Intent.YT_SUMMARY to IntentMeta(setOf(Slot.QUERY), false, true, "ইউটিউব লিংকের সারমর্ম", "Summarise a YouTube link"),
+        Intent.YT_TRANSCRIPT to IntentMeta(emptySet(), false, true, "স্ক্রিনের ভিডিওর ট্রান্সক্রিপ্ট সারমর্ম", "Summarise the on-screen transcript"),
+        // v1.3.4 — reading is harmless; writing to the user's calendar is not, so it confirms like a message.
+        Intent.CAL_LIST to IntentMeta(emptySet(), false, true, "ক্যালেন্ডার দেখা", "Read the calendar"),
+        Intent.CAL_ADD to IntentMeta(setOf(Slot.TEXT, Slot.TIME), true, true, "ক্যালেন্ডারে ইভেন্ট যোগ", "Add a calendar event"),
         Intent.UNKNOWN to IntentMeta(setOf(Slot.QUERY), false, false, "বোঝা যায়নি", "Not understood"),
     )
 

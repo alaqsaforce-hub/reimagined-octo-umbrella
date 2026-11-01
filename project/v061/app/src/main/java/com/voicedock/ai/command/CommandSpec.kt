@@ -36,6 +36,27 @@ enum class Intent(val id: String) {
     MSG_SCHEDULE("msg.schedule"),
     WEB_SEARCH("web.search"),
     YT_SEARCH("yt.search"),
+    // v1.3.0 device access: which SIM / my own number / who is calling / which chat instance / Termux.
+    SIM_NUMBERS("sim.numbers"),
+    CALLER_WHO("identity.who"),
+    CHAT_OPEN("chat.open"),
+    TERMUX_RUN("termux.run"),
+    // v1.3.0 background task board.
+    TASK_ADD("task.add"),
+    TASK_LIST("task.list"),
+    TASK_CANCEL("task.cancel"),
+    // v1.3.1 voice-to-voice: the draft card is controlled by voice too, but only ever *explicitly*.
+    DRAFT_INSERT("draft.insert"),
+    DRAFT_DISCARD("draft.discard"),
+    VOICE_OPEN("voice.open"),
+    // v1.3.2 content summaries: one chat's roll-up from notifications, and a YouTube link's metadata.
+    MSG_THREAD("msg.thread"),
+    YT_SUMMARY("yt.summary"),
+    /** v1.3.3 — the transcript panel of the video that is open on screen (accessibility pass). */
+    YT_TRANSCRIPT("yt.transcript"),
+    /** v1.3.4 — read the calendar, and add one event (confirmed first). */
+    CAL_LIST("cal.list"),
+    CAL_ADD("cal.add"),
     UNKNOWN("unknown");
 
     companion object {
@@ -55,7 +76,11 @@ enum class Slot(val key: String) {
     /** v0.10.0 — which transport command: play / pause / next / previous / stop. */
     MEDIA("media"),
     /** v1.2.0 — when something should happen ("৩টায়", "২০ মিনিট পরে", "কাল সকাল ৯টা"). */
-    TIME("time");
+    TIME("time"),
+    /** v1.3.0 — a SIM slot ("সিম ২"), so a call goes out on the SIM the user named. */
+    SIM("sim"),
+    /** v1.3.0 — which chat app / clone ("বিজনেস", "ক্লোন", "মেসেঞ্জার"). */
+    CHAT("chat");
 
     companion object {
         fun from(raw: String?): Slot? {

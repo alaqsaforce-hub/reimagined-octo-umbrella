@@ -64,6 +64,10 @@ fun DictationBubble(
     onChoice: (Int) -> Unit = {},
     /** v0.10.0 — take back the action that just ran (only offered when it is real). */
     onUndo: () -> Unit = {},
+    /** v1.3.1 — the draft card. All three are explicit taps: nothing is ever inserted on its own. */
+    onDraftInsert: () -> Unit = {},
+    onDraftKeep: () -> Unit = {},
+    onDraftDiscard: () -> Unit = {},
 ) {
     val cfg = LocalConfiguration.current
     val maxWidth = (cfg.screenWidthDp * 0.68f).dp
@@ -127,6 +131,53 @@ fun DictationBubble(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline,
                         )
+                    }
+                }
+
+                // ---- v1.3.1 — the draft card: shown, never auto-inserted ----
+                if (state.draftText.isNotBlank()) {
+                    HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                    Text(
+                        com.voicedock.ai.draft.DraftCore.title(isBengaliUi()),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    if (state.draftTarget.isNotBlank()) {
+                        Text(
+                            state.draftTarget,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                    Box(Modifier.heightIn(max = maxTextHeight).verticalScroll(rememberScrollState())) {
+                        Text(state.draftText, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    if (state.draftNote.isNotBlank()) {
+                        Text(
+                            state.draftNote,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        MiniAction("✕", com.voicedock.ai.draft.DraftCore.discardLabel(isBengaliUi()), onDraftDiscard)
+                        MiniAction("📥", com.voicedock.ai.draft.DraftCore.keepLabel(isBengaliUi()), onDraftKeep)
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            onClick = onDraftInsert,
+                        ) {
+                            Text(
+                                com.voicedock.ai.draft.DraftCore.insertLabel(isBengaliUi()),
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                            )
+                        }
                     }
                 }
 
@@ -238,6 +289,10 @@ private fun MiniAction(label: String, description: String, onClick: () -> Unit, 
         )
     }
 }
+
+/** The bubble is drawn by a service, so `tr(...)` is the same source of truth the rest of the UI uses. */
+private fun isBengaliUi(): Boolean =
+    com.voicedock.ai.settings.SettingsStore.state.value.uiLanguage == com.voicedock.ai.settings.UiLanguage.BN
 
 /** Dot colour: red while the mic is hot, amber while paused, green when the text is ready. */
 private fun DictationBubbleState.dotColor(): Color = when (phase) {

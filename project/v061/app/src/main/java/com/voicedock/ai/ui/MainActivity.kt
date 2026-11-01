@@ -55,10 +55,11 @@ import com.voicedock.ai.ui.screens.HomeScreen
 import com.voicedock.ai.ui.screens.OnboardingScreen
 import com.voicedock.ai.ui.screens.PrivacyScreen
 import com.voicedock.ai.ui.screens.SettingsScreen
+import com.voicedock.ai.ui.screens.VoiceScreen
 import com.voicedock.ai.ui.screens.WorkspaceScreen
 import com.voicedock.ai.ui.theme.VoiceDockTheme
 
-enum class Screen { ONBOARDING, HOME, WORKSPACE, KNOWLEDGE, DRAFTS, SETTINGS, PRIVACY, AI, CONNECTORS, AGENT }
+enum class Screen { ONBOARDING, HOME, WORKSPACE, VOICE, KNOWLEDGE, DRAFTS, SETTINGS, PRIVACY, AI, CONNECTORS, AGENT }
 
 class MainActivity : ComponentActivity() {
     private var screen by mutableStateOf(Screen.HOME)
@@ -130,8 +131,18 @@ class MainActivity : ComponentActivity() {
                                 openAgent = { screen = Screen.AGENT },
                                 openKnowledge = { screen = Screen.KNOWLEDGE },
                                 openDrafts = { screen = Screen.DRAFTS },
+                                openVoice = { screen = Screen.VOICE },
                             )
                             Screen.WORKSPACE -> WorkspaceScreen(dictation, startDictation = { withMic { startInApp() } }, openAi = { screen = Screen.AI })
+                            // v1.3.1 — the ChatGPT-like voice surface. "⚡ কমান্ড" hands the sentence to the
+                            // real command pipeline (the bubble), so the outcome shown here is the real one.
+                            Screen.VOICE -> VoiceScreen(
+                                controller = dictation,
+                                openSettings = { screen = Screen.SETTINGS },
+                                runCommand = { text ->
+                                    AssistantOverlayService.runCommand(this@MainActivity, text)
+                                },
+                            )
                             Screen.KNOWLEDGE -> KnowledgeScreen(openConnectors = { screen = Screen.CONNECTORS }, openAi = { screen = Screen.AI })
                             Screen.AI -> AiProvidersScreen()
                             Screen.CONNECTORS -> ConnectorsScreen()
@@ -156,6 +167,9 @@ class MainActivity : ComponentActivity() {
         Screen.ONBOARDING -> tr("শুরু করা যাক", "Getting started")
         Screen.HOME -> "VoiceDock AI"
         Screen.WORKSPACE -> tr("ডিক্টেশন ও রিভিউ", "Dictation & review")
+        Screen.VOICE -> com.voicedock.ai.draft.DraftCore.voiceTitle(
+            com.voicedock.ai.settings.SettingsStore.state.value.uiLanguage == com.voicedock.ai.settings.UiLanguage.BN,
+        )
         Screen.DRAFTS -> tr("ড্রাফট ইতিহাস", "Draft history")
         Screen.SETTINGS -> tr("সেটিংস", "Settings")
         Screen.PRIVACY -> tr("অনুমতি ও প্রাইভেসি", "Permissions & privacy")
@@ -186,6 +200,7 @@ class MainActivity : ComponentActivity() {
             "ai" -> screen = Screen.AI
             "knowledge" -> screen = Screen.KNOWLEDGE
             "agent" -> screen = Screen.AGENT
+            "voice" -> screen = Screen.VOICE
         }
     }
 

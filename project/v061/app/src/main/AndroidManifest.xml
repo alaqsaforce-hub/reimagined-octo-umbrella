@@ -33,6 +33,18 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
 
+    <!-- v1.3.0 device access: which SIM the phone has, its (masked) own number, and whether a call can be
+         aimed at a specific SIM. READ_PHONE_NUMBERS is the only new runtime prompt; READ_BASIC_PHONE_STATE is
+         install-time on API 33+ and lets the app ask "is telephony there at all" without the sensitive one. -->
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
+    <uses-permission android:name="android.permission.READ_BASIC_PHONE_STATE" />
+
+    <!-- v1.3.0 Termux: running a shell command (and through it proot-Ubuntu / OpenCode) is possible only via
+         Termux's own RUN_COMMAND service. This is a signature-less custom permission Termux defines; Termux
+         must ALSO have "allow-external-apps=true" in ~/.termux/termux.properties, which the app can only
+         explain, never set. Without either side the command is honestly reported as not run. -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
     <!-- VoiceDock works on tablets/Chromebooks without telephony: the call commands simply report that
          no phone app can place a call there. required="false" keeps the app installable. -->
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
@@ -53,6 +65,9 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="https" />
         </intent>
+        <!-- v1.3.0 — Termux (and nothing else) is named explicitly: the RUN_COMMAND service and its label are
+             looked up by package, and package visibility would otherwise hide it on Android 11+. -->
+        <package android:name="com.termux" />
     </queries>
 
     <application

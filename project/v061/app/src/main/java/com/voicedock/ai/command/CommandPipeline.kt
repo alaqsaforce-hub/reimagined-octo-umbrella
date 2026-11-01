@@ -71,6 +71,10 @@ object CommandPipeline {
                 Slot.QUERY -> bn("কী সম্পর্কে?", "About what?")
                 Slot.MEDIA -> bn("গানের কী করবো?", "What should I do with the music?")
                 Slot.TIME -> bn("কখন মনে করিয়ে দেব? যেমন ‘৩টায়’ বা ‘২০ মিনিট পরে’", "When should I remind you? e.g. ‘at 3’ or ‘in 20 minutes’")
+                // v1.3.0 — these two only ever arrive from a statement the parser already understood, so a
+                // missing value is not a question the user can answer with a button.
+                Slot.SIM -> bn("কোন সিম দিয়ে?", "On which SIM?")
+                Slot.CHAT -> bn("কোন অ্যাপ/ইনস্ট্যান্স?", "Which app/instance?")
             }
             val choices = if (options.isEmpty()) {
                 listOf(Choice(bn("বাতিল", "Cancel"), Intent.UNKNOWN))
@@ -118,6 +122,25 @@ object CommandPipeline {
                 bn("মিউজিক: ${what ?: "নিয়ন্ত্রণ"}", "media: ${what ?: (a.ifBlank { "control" })}")
             }
             Intent.UNDO -> bn("শেষ কাজটি ফিরিয়ে নেবে", "undo the last action")
+            Intent.SIM_NUMBERS -> bn("সিম ও নিজের নম্বর দেখাবে", "show your SIMs and own numbers")
+            Intent.CALLER_WHO -> bn("কে ফোন করছে দেখাবে", "show who is calling")
+            Intent.CHAT_OPEN -> bn("চ্যাট অ্যাপ খুলবে: ${spec.slot(Slot.CHAT).orEmpty()}", "open a chat app: ${spec.slot(Slot.CHAT).orEmpty()}")
+            Intent.TERMUX_RUN -> bn("টার্মাক্সে চালাবে: ${spec.slot(Slot.TEXT).orEmpty().take(60)}", "run in Termux: ${spec.slot(Slot.TEXT).orEmpty().take(60)}")
+            Intent.TASK_ADD -> bn("ব্যাকগ্রাউন্ডে কাজ নেবে: ${spec.slot(Slot.TEXT).orEmpty().take(60)}", "take a background task: ${spec.slot(Slot.TEXT).orEmpty().take(60)}")
+            Intent.TASK_LIST -> bn("কাজের তালিকা দেখাবে", "list background tasks")
+            Intent.TASK_CANCEL -> bn("চলমান কাজ বাতিল করবে", "cancel the running task")
+            Intent.DRAFT_INSERT -> bn("খসড়া কার্সরে বসাবে", "insert the draft")
+            Intent.DRAFT_DISCARD -> bn("খসড়া বাতিল করবে", "discard the draft")
+            Intent.VOICE_OPEN -> bn("ভয়েস মোড খুলবে", "open voice mode")
+            Intent.MSG_THREAD -> bn("‘${spec.slot(Slot.CONTACT).orEmpty()}’-এর মেসেজের সারমর্ম দেবে",
+                "summarise the chat with ‘${spec.slot(Slot.CONTACT).orEmpty()}’")
+            Intent.YT_SUMMARY -> bn("ইউটিউব লিংকটার সারমর্ম দেবে", "summarise the YouTube link")
+            Intent.YT_TRANSCRIPT -> bn("স্ক্রিনে খোলা ভিডিওর ট্রান্সক্রিপ্ট পড়ে সারমর্ম দেবে",
+                "read the on-screen transcript and summarise it")
+            Intent.CAL_LIST -> bn("ক্যালেন্ডার দেখাবে (${spec.slot(Slot.TIME).orEmpty().ifBlank { "আজ" }})",
+                "read the calendar (${spec.slot(Slot.TIME).orEmpty().ifBlank { "today" }})")
+            Intent.CAL_ADD -> bn("ক্যালেন্ডারে যোগ করবে: “${spec.slot(Slot.TEXT).orEmpty().take(50)}” (${spec.slot(Slot.TIME).orEmpty()})",
+                "add to the calendar: “${spec.slot(Slot.TEXT).orEmpty().take(50)}” (${spec.slot(Slot.TIME).orEmpty()})")
             Intent.REMINDER_ADD -> bn(
                 "‘${spec.slot(Slot.TEXT).orEmpty()}’ — ${spec.slot(Slot.TIME).orEmpty()} মনে করিয়ে দেবে",
                 "remind you to ‘${spec.slot(Slot.TEXT).orEmpty()}’ — ${spec.slot(Slot.TIME).orEmpty()}",

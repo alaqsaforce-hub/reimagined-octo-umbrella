@@ -1,5 +1,6 @@
 package com.voicedock.ai.command
 
+import com.voicedock.ai.device.SimCore
 import com.voicedock.ai.schedule.TimeWords
 
 /**
@@ -71,6 +72,117 @@ object CommandParser {
         if (containsAny(low, "আনডু", "আনডো", "undo", "ফিরিয়ে নাও")) {
             return spec(Intent.UNDO, 0.95)
         }
+        // --- v1.3.4 calendar: only when the sentence says "calendar" (a reminder is a different thing) ---
+        if (containsAny(low, "ক্যালেন্ডার", "calendar", "ক্যালেন্ডারে")) {
+            val addVerb = containsAny(low, "যোগ কর", "যোগ দে", "ঢোকাও", "লিখে রাখো", "এড কর", "add to", "add it", "schedule")
+            if (addVerb) {
+                // The title is whatever is left once the calendar words, the verb and the time phrase are gone.
+                var title = raw
+                for (w in listOf("ক্যালেন্ডারে", "ক্যালেন্ডার", "calendar", "যোগ করো", "যোগ কর", "যোগ দে", "ঢোকাও",
+                        "লিখে রাখো", "এড কর", "add to", "add it", "schedule", "একটা", "একটি", "নতুন", "ইভেন্ট")) {
+                    title = title.replace(w, " ", ignoreCase = true)
+                }
+                com.voicedock.ai.schedule.TimeWords.parse(raw, System.currentTimeMillis())?.matched?.let {
+                    title = title.replace(it, " ")
+                }
+                title = title.replace(Regex("[\\s,।.]+"), " ").trim()
+                return spec(Intent.CAL_ADD, 0.9, Slot.TEXT to title, Slot.TIME to raw)
+            }
+            return spec(Intent.CAL_LIST, 0.91, Slot.TIME to raw)
+        }
+        // --- v1.3.3 the transcript panel of the video that is already open (no link needed) ---
+        if (containsAny(low, "ট্রান্সক্রিপ্ট", "transcript", "ক্যাপশন", "captions") ||
+            (containsAny(low, "ভিডিও", "video") && containsAny(low, "সারমর্ম", "সারাংশ", "summary", "summarise", "summarize"))
+        ) {
+            if (!com.voicedock.ai.summaries.YtSummaryCore.looksLikeLink(raw)) {
+                return spec(Intent.YT_TRANSCRIPT, 0.9)
+            }
+        }
+        // --- v1.3.2 content summaries (before the YouTube *search* rule and the generic web search) ---
+        if (com.voicedock.ai.summaries.YtSummaryCore.looksLikeLink(raw) &&
+            (com.voicedock.ai.summaries.YtSummaryCore.isSummaryRequest(raw) ||
+                containsAny(low, "সারমর্ম", "সারাংশ", "summary", "summarise", "summarize"))
+        ) {
+            return spec(Intent.YT_SUMMARY, 0.93, Slot.QUERY to raw.trim())
+        }
+        if (containsAny(low, "সারমর্ম", "সারাংশ", "সারসংক্ষেপ", "summary", "summarise", "summarize", "কী কথা", "কি কথা") &&
+            containsAny(low, "মেসেজ", "চ্যাট", "chat", "message", "কথা")
+        ) {
+            // The person is whatever is left once the "summarise this chat" words are removed.
+            // No suffix-stripping here: the per-token pass below does it, and stripping first would turn
+            // "আজকের" into "আজক" (a fake name) before the day-word filter ever saw it.
+            val who = (
+                listOf("মেসেজের সারমর্ম", "মেসেজের সারাংশ", "মেসেজ সারমর্ম", "মেসেজের", "মেসেজ", "চ্যাটের", "চ্যাট",
+                    "সারমর্ম", "সারাংশ", "সারসংক্ষেপ", "summary", "summarise", "summarize", "চ্যাটে", "কী কথা হলো",
+                    "কি কথা হলো", "কী কথা", "কি কথা", "সাথে", "with", "chat", "messages", "message", "দাও", "বলো", "?")
+                    .fold(raw) { acc, w -> acc.replace(w, " ") }
+                    .trim()
+            )
+            // "আজকের / সব / আমার মেসেজ" is not a person — that is the day digest, which an earlier rule
+            // already owns. Only a real leftover name turns this into a one-chat roll-up.
+            val notAPerson = setOf(
+                "আজ", "আজকের", "আজকে", "সব", "সবাই", "আমার", "আমাদের", "আমাকে", "মোর",
+                "today", "all", "everyone", "day", "my", "our", "me", "mine", "s",
+            )
+            val person = who.split(' ')
+                // The day words are checked BEFORE the suffix strip, because "আজকের" → "আজক" is not a name.
+                .filter { it.isNotBlank() && it.lowercase() !in notAPerson }
+                .map { com.voicedock.ai.notify.SenderMatch.cleanName(it) }
+                .filter { it.length >= 2 && it.lowercase() !in notAPerson }
+                .joinToString(" ").trim()
+            if (person.isNotBlank()) return spec(Intent.MSG_THREAD, 0.9, Slot.CONTACT to person)
+        }
+        // --- v1.3.1 the draft card, controlled by voice: "ঢোকাও" / "খসড়া বাতিল" (before the app-open rules,
+        //     because "বসাও" would otherwise look like a command to open something) ---
+        if (com.voicedock.ai.draft.DraftCore.isInsertCommand(raw)) return spec(Intent.DRAFT_INSERT, 0.95)
+        if (com.voicedock.ai.draft.DraftCore.isDiscardCommand(raw)) return spec(Intent.DRAFT_DISCARD, 0.94)
+        if (containsAny(low, "ভয়েস মোড", "ভয়েস স্ক্রিন", "voice mode", "voice screen")) {
+            return spec(Intent.VOICE_OPEN, 0.93)
+        }
+        // --- v1.3.0 task board: "কাজ দাও: মনে করাও…; তারপর …" (before everything else that says "দাও") ---
+        if (containsAny(low, "কাজ দাও", "কাজ দে ", "কাজ দিন", "টাস্ক দাও", "নতুন কাজ", "add task", "new task", "task add")) {
+            val body = afterAny(raw, low, "কাজ দাও", "কাজ দে", "কাজ দিন", "টাস্ক দাও", "নতুন কাজ", "add task", "new task", "task add")
+                .trim().trim(':', '—', '-')
+            return spec(Intent.TASK_ADD, 0.92, Slot.TEXT to body.ifBlank { raw.trim() })
+        }
+        if (containsAny(low, "কাজের তালিকা", "কাজগুলো দেখাও", "কী কী কাজ", "কি কি কাজ", "task list", "my tasks", "running tasks")) {
+            return spec(Intent.TASK_LIST, 0.92)
+        }
+        if (containsAny(low, "কাজ বাতিল", "কাজ থামাও", "টাস্ক বাতিল", "cancel the task", "cancel task", "stop the task")) {
+            return spec(Intent.TASK_CANCEL, 0.92)
+        }
+        // --- v1.3.0 Termux: "টার্মাক্সে ls চালাও", "টার্মাক্সে proot-distro login ubuntu" ---------------
+        if (containsAny(low, "টার্মাক্স", "টারমাক্স", "termux")) {
+            val cmd = afterAny(raw, low, "টার্মাক্সে", "টারমাক্সে", "টার্মাক্স", "টারমাক্স", "termux")
+                .trim().trim(':', ',', '—', '-')
+            val openOnly = cmd.isBlank() || containsAny(cmd.lowercase(), "খোলো", "চালু কর", "open", "launch") &&
+                cmd.split(' ').size <= 3
+            if (openOnly) {
+                return spec(Intent.APP_LAUNCH, 0.88, Slot.APP to "termux")
+            }
+            // "…চালাও / রান করো / দাও" is the verb, not part of the command.
+            val cleaned = cmd
+                .removeSuffix("চালাও").removeSuffix("চালিয়ে দাও").removeSuffix("রান করো")
+                .removeSuffix("run it").removeSuffix("run").trim().trim(':', ',', '—', '-')
+            return spec(Intent.TERMUX_RUN, 0.9, Slot.TEXT to cleaned.ifBlank { cmd })
+        }
+        // --- v1.3.0 my own number / which SIMs are there ---
+        if (containsAny(low, "আমার নম্বর", "নিজের নম্বর", "সিমের নম্বর", "কয়টা সিম", "কতগুলো সিম", "সিম কয়টা",
+                "my number", "which sim", "sim list", "sim numbers", "কোন সিম")) {
+            return spec(Intent.SIM_NUMBERS, 0.93)
+        }
+        // --- v1.3.0 who is on the other end ---
+        if (containsAny(low, "কে ফোন করছে", "কে কল করছে", "কার ফোন", "কার কল", "who is calling", "who's calling")) {
+            return spec(Intent.CALLER_WHO, 0.93)
+        }
+        // --- v1.3.0 chat instances (Business / clone / Messenger): "বিজনেস হোয়াটসঅ্যাপ খোলো" ----------
+        // Only when the sentence says *which* instance, or asks which ones exist. A plain "হোয়াটসঅ্যাপ খোলো"
+        // stays an ordinary app launch (v0.7.0 behaviour, and it is the right thing to do).
+        if (containsAny(low, "হোয়াটসঅ্যাপ", "whatsapp", "মেসেঞ্জার", "messenger") &&
+            containsAny(low, "বিজনেস", "business", "ক্লোন", "clone", "দ্বিতীয়", "dual", "ওয়ার্ক", "work", "অফিস",
+                "কোন কোন", "কয়টা", "কতগুলো", "ইনস্ট্যান্স", "instance")) {
+            return spec(Intent.CHAT_OPEN, 0.88, Slot.CHAT to raw.trim())
+        }
         // --- memory recall (must come before "রাখো") ---
         if (containsAny(low, "মনে পড়", "মনে আছে", "কী বলেছিলাম", "কি বলেছিলাম", "মনে রাখতে বলেছিলাম", "recall", "what did you remember", "what did i tell you")) {
             return spec(Intent.MEMORY_RECALL, 0.95, Slot.QUERY to raw.trim())
@@ -128,8 +240,19 @@ object CommandParser {
             // Bangla puts the person first: "মাকে ফোন কর" → the name is BEFORE the verb.
             val after = afterAny(raw, low, "ফোন কর", "ফোন দাও", "কল কর", "call")
             // "রহিমকে ফোন করো" leaves only the vowel sign of "করো" behind — that is not a name.
-            val who = if (meaningful(after)) after else beforeAny(raw, low, "ফোন কর", "ফোন দাও", "কল কর", "call")
-            return spec(Intent.CALL_PLACE, 0.9, Slot.CONTACT to who)
+            var who = if (meaningful(after)) after else beforeAny(raw, low, "ফোন কর", "ফোন দাও", "কল কর", "call")
+            // v1.3.0 — "সিম ২ দিয়ে রহিমকে ফোন করো": the SIM words are part of the sentence, not the name.
+            val slotWanted = SimCore.parseSlot(raw)
+            who = SimCore.stripSimPhrase(who)
+            return CommandSpec(
+                intent = Intent.CALL_PLACE,
+                slots = buildMap {
+                    if (who.isNotBlank()) put(Slot.CONTACT, who)
+                    if (slotWanted != null) put(Slot.SIM, slotWanted.toString())
+                },
+                confidence = 0.9,
+                raw = raw,
+            )
         }
         // --- YouTube search (v1.2.1): before the generic web search, so "ইউটিউবে …" stays on YouTube. ---
         if ((low.contains("ইউটিউব") || low.contains("youtube")) &&
